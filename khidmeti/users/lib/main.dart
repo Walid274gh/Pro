@@ -9,6 +9,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 // Design constants (Paytone One palette)
 const Color kPrimaryYellow = Color(0xFFFCDC73);
@@ -759,20 +761,49 @@ class HomeScreen extends StatelessWidget {
                   Text('Autour de vous', style: kSubheadingStyle),
                   const SizedBox(height: 12),
                   SizedBox(
-                    height: 200,
+                    height: 260,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(kBorderRadius),
-                      child: FlutterMap(
-                        options: const MapOptions(
-                          initialCenter: LatLng(36.7529, 3.0420),
-                          initialZoom: 11,
-                        ),
-                        children: [
-                          TileLayer(
-                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            userAgentPackageName: 'com.khidmeti.users',
-                          ),
-                        ],
+                      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: kUseFirebase
+                            ? FirebaseFirestore.instance
+                                .collection('workers')
+                                .where('subscriptionStatus', isEqualTo: 'active')
+                                .where('visibilityOnMap', isEqualTo: true)
+                                .snapshots()
+                            : const Stream.empty(),
+                        builder: (context, snapshot) {
+                          final markers = <Marker>[];
+                          if (snapshot.hasData) {
+                            for (final d in snapshot.data!.docs) {
+                              final data = d.data();
+                              final loc = data['location'];
+                              if (loc is GeoPoint) {
+                                markers.add(
+                                  Marker(
+                                    width: 40,
+                                    height: 40,
+                                    point: LatLng(loc.latitude, loc.longitude),
+                                    child: const Icon(Icons.location_pin, color: kPrimaryRed, size: 36),
+                                  ),
+                                );
+                              }
+                            }
+                          }
+                          return FlutterMap(
+                            options: const MapOptions(
+                              initialCenter: LatLng(36.7529, 3.0420),
+                              initialZoom: 11,
+                            ),
+                            children: [
+                              TileLayer(
+                                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                userAgentPackageName: 'com.khidmeti.users',
+                              ),
+                              if (markers.isNotEmpty) MarkerLayer(markers: markers),
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ),

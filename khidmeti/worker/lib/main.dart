@@ -9,6 +9,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart' as geo;
+import 'package:permission_handler/permission_handler.dart' as perms;
 
 // Design constants (Professional emphasis)
 const Color kPrimaryYellow = Color(0xFFFCDC73);
@@ -334,6 +336,13 @@ class WorkerProfileRepository {
     if (!kUseFirebase) return;
     await db.collection('workers').doc(workerId).set({'verificationStatus': status}, SetOptions(merge: true));
   }
+
+  Future<void> updateLocation({required String workerId, required double lat, required double lng}) async {
+    if (!kUseFirebase) return;
+    await db.collection('workers').doc(workerId).set({
+      'location': GeoPoint(lat, lng),
+    }, SetOptions(merge: true));
+  }
 }
 
 // Widgets
@@ -568,6 +577,23 @@ class WorkerHomeScreen extends StatelessWidget {
   final String? selectedAvatar;
   const WorkerHomeScreen({super.key, this.selectedAvatar});
 
+  Future<void> _toggleVisibility(BuildContext context, bool visible) async {
+    if (!kUseFirebase) return;
+    const workerId = 'demo-worker-id';
+    final repo = WorkerProfileRepository(FirebaseFirestore.instance);
+    await repo.updateVisibility(workerId: workerId, visible: visible);
+    if (visible) {
+      final locPerm = await perms.Permission.location.request();
+      if (locPerm.isGranted) {
+        final pos = await geo.Geolocator.getCurrentPosition();
+        await repo.updateLocation(workerId: workerId, lat: pos.latitude, lng: pos.longitude);
+      }
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(visible ? 'Visibilité activée' : 'Visibilité désactivée')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -614,6 +640,18 @@ class WorkerHomeScreen extends StatelessWidget {
                         ],
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Text('Visible sur la carte', style: kBodyStyle),
+                      const Spacer(),
+                      Switch(
+                        value: true,
+                        onChanged: (v) => _toggleVisibility(context, v),
+                        activeColor: kPrimaryTeal,
+                      ),
+                    ],
                   ),
                 ],
               ),
