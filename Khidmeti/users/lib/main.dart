@@ -56,7 +56,7 @@ class _UsersAppShellState extends State<UsersAppShell> {
   int _currentIndex = 0;
 
   List<Widget> get _pages => <Widget>[
-        _buildPage('Accueil', 'Recommandations de travailleurs'),
+        _buildHomePage(),
         _buildPage('Recherche', 'Carte des travailleurs disponibles'),
         _buildPage('Demande', 'Publier une demande avec médias et localisation'),
         _buildPage('Paramètres', 'Langue, déconnexion, infos'),
@@ -76,6 +76,14 @@ class _UsersAppShellState extends State<UsersAppShell> {
           ],
         ),
       ),
+    );
+  }
+
+  static Widget _buildHomePage() {
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Accueil')),
+      body: const UsersHomeRecommendations(),
     );
   }
 
@@ -571,6 +579,168 @@ class WorkersDiscoveryRepository {
   }
 
   double _degToRad(double deg) => deg * (pi / 180.0);
+}
+
+class UsersHomeRecommendations extends StatefulWidget {
+  const UsersHomeRecommendations({super.key, this.category});
+
+  final String? category;
+
+  @override
+  State<UsersHomeRecommendations> createState() => _UsersHomeRecommendationsState();
+}
+
+class _UsersHomeRecommendationsState extends State<UsersHomeRecommendations> {
+  final GeolocationService _geo = const GeolocationService();
+  final WorkersDiscoveryRepository _repo = WorkersDiscoveryRepository();
+
+  Stream<List<Map<String, dynamic>>>? _stream;
+  Position? _position;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      await _geo.ensurePermission();
+      final pos = await _geo.getCurrentPosition();
+      setState(() {
+        _position = pos;
+        _stream = _repo.streamRecommendedWorkers(
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          category: widget.category,
+        );
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+        child: Text('Erreur: ${_error!}', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+      );
+    }
+    if (_stream == null || _position == null) {
+      return Center(child: Text('Position indisponible', style: AppTheme.kBodyStyle));
+    }
+
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _stream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final workers = snapshot.data ?? const <Map<String, dynamic>>[];
+        if (workers.isEmpty) {
+          return Center(child: Text('Aucun travailleur recommandé à proximité', style: AppTheme.kBodyStyle));
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: workers.length,
+          itemBuilder: (context, index) {
+            final w = workers[index];
+            return _WorkerCard(worker: w);
+          },
+        );
+      },
+    );
+  }
+}
+
+class _WorkerCard extends StatelessWidget {
+  const _WorkerCard({required this.worker});
+
+  final Map<String, dynamic> worker;
+
+  @override
+  Widget build(BuildContext context) {
+    final String name = (worker['displayName'] ?? 'Travailleur').toString();
+    final String photoUrl = (worker['photoUrl'] ?? '').toString();
+    final double rating = (worker['ratingAvg'] ?? 0.0).toDouble();
+    final int ratingCount = (worker['ratingCount'] ?? 0) as int;
+    final double distanceKm = (worker['distanceKm'] ?? 0.0).toDouble();
+    final List categories = (worker['categories'] ?? const <String>[]) as List;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 28,
+              backgroundColor: AppTheme.kPrimaryTeal.withValues(alpha: 0.2),
+              backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+              child: photoUrl.isEmpty
+                  ? Text(name.isNotEmpty ? name[0].toUpperCase() : '?', style: AppTheme.kSubheadingStyle)
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: AppTheme.kSubheadingStyle),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
+                      const SizedBox(width: 4),
+                      Text(rating.toStringAsFixed(1), style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kTextColor)),
+                      const SizedBox(width: 8),
+                      Text('($ratingCount)', style: AppTheme.kBodyStyle),
+                      const SizedBox(width: 12),
+                      const Icon(Icons.place_rounded, color: AppTheme.kPrimaryTeal, size: 18),
+                      const SizedBox(width: 4),
+                      Text('${distanceKm.toStringAsFixed(1)} km', style: AppTheme.kBodyStyle),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: categories
+                        .take(4)
+                        .map((c) => Chip(
+                              label: Text(c.toString()),
+                              backgroundColor: AppTheme.kButton3DLight,
+                              side: const BorderSide(color: AppTheme.kPrimaryYellow),
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                            ))
+                        .toList(),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: () {
+                // TODO: Navigate to worker profile details (to implement)
+              },
+              child: const Text('Profil'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class PushNotificationService {
