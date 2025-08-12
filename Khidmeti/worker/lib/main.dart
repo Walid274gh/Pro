@@ -4,6 +4,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:typed_data';
+import 'dart:math';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -258,6 +261,85 @@ class FirestoreProfileRepository {
       },
       SetOptions(merge: true),
     );
+  }
+}
+
+class StorageService {
+  StorageService({FirebaseStorage? storage, required String role})
+      : _storage = storage ?? FirebaseStorage.instance,
+        _role = role;
+
+  final FirebaseStorage _storage;
+  final String _role; // 'users' or 'workers'
+
+  String _buildPath({
+    required String uid,
+    required String category,
+    required String fileName,
+  }) => '$_role/$uid/$category/$fileName';
+
+  Future<String> uploadData({
+    required String uid,
+    required Uint8List data,
+    required String category,
+    required String extension,
+    String? fileName,
+    String? contentType,
+  }) async {
+    final String safeExt = extension.replaceAll('.', '').toLowerCase();
+    final String inferredType = contentType ?? _contentTypeForExtension(safeExt);
+    final String name = fileName ?? _generateFileName(safeExt);
+    final String fullPath = _buildPath(uid: uid, category: category, fileName: name);
+    final Reference ref = _storage.ref(fullPath);
+    final SettableMetadata meta = SettableMetadata(contentType: inferredType);
+    final UploadTask task = ref.putData(data, meta);
+    await task.whenComplete(() {});
+    return ref.getDownloadURL();
+  }
+
+  Future<void> deleteAtPath({
+    required String uid,
+    required String category,
+    required String fileName,
+  }) async {
+    final String fullPath = _buildPath(uid: uid, category: category, fileName: fileName);
+    await _storage.ref(fullPath).delete();
+  }
+
+  Future<ListResult> listCategory({
+    required String uid,
+    required String category,
+  }) {
+    return _storage.ref('$_role/$uid/$category').listAll();
+  }
+
+  String _generateFileName(String extension) {
+    final int ts = DateTime.now().millisecondsSinceEpoch;
+    final Random rand = Random.secure();
+    final int salt = rand.nextInt(0xFFFFFF);
+    return '$ts-$salt.$extension';
+  }
+
+  String _contentTypeForExtension(String ext) {
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'heic':
+        return 'image/heic';
+      case 'mp4':
+        return 'video/mp4';
+      case 'mov':
+        return 'video/quicktime';
+      case 'pdf':
+        return 'application/pdf';
+      default:
+        return 'application/octet-stream';
+    }
   }
 }
 
