@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.khidmeti"
+    namespace = "com.khidmeti.users"
     compileSdk = 36
     ndkVersion = "27.0.12077973"
 
@@ -22,7 +22,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.khidmeti"
+        applicationId = "com.khidmeti.users"
         minSdk = 23
         targetSdk = 36
         versionCode = flutter.versionCode.toInt()
@@ -30,7 +30,7 @@ android {
         multiDexEnabled = true
         
         manifestPlaceholders.putAll(mapOf(
-            "appName" to "Khidmeti",
+            "appName" to "Khidmeti Users",
             "backgroundLocation" to "Cette application utilise la localisation en arrière-plan pour vous connecter avec des travailleurs proches."
         ))
     }
@@ -60,10 +60,8 @@ coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     implementation("com.google.firebase:firebase-messaging-ktx")
     implementation("com.google.firebase:firebase-crashlytics-ktx")
     
-    // Google Play Services
-    implementation("com.google.android.gms:play-services-maps:18.2.0")
+    // Google Play Services (Maps removed - using OpenStreetMap via flutter_map)
     implementation("com.google.android.gms:play-services-location:21.0.1")
-    implementation("com.google.android.gms:play-services-auth:20.7.0")
     
     // Background services
     implementation("androidx.work:work-runtime-ktx:2.9.0")
