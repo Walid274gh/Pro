@@ -80,7 +80,39 @@ Future<void> main() async {
   await flutterLocalNotificationsPlugin.initialize(const InitializationSettings(android: androidInit));
   // Request FCM permission (no-op on Android <13)
   try { await FirebaseMessaging.instance.requestPermission(); } catch (_) {}
+  // Initialize push notifications
+  await initializePushNotifications(flutterLocalNotificationsPlugin);
   runApp(const KhidmetiApp());
+}
+
+Future<void> initializePushNotifications(FlutterLocalNotificationsPlugin plugin) async {
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+    final notification = message.notification;
+    if (notification != null) {
+      await plugin.show(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        notification.title ?? 'Khidmeti',
+        notification.body ?? '',
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'khidmeti',
+            'Khidmeti',
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+        ),
+      );
+    }
+  });
+  try {
+    final token = await FirebaseMessaging.instance.getToken();
+    final user = FirebaseAuth.instance.currentUser;
+    if (token != null && user != null) {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'fcmToken': token,
+      }, SetOptions(merge: true));
+    }
+  } catch (_) {}
 }
 
 class KhidmetiApp extends StatelessWidget {
