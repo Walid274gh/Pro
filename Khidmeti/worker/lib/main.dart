@@ -1096,6 +1096,108 @@ class _WorkerKycScreenState extends State<WorkerKycScreen> {
   }
 }
 
+class SubscriptionRepository {
+  SubscriptionRepository({FirebaseFirestore? firestore, FirebaseStorage? storage})
+      : _firestore = firestore ?? FirebaseFirestore.instance,
+        _storage = storage ?? FirebaseStorage.instance;
+
+  final FirebaseFirestore _firestore;
+  final FirebaseStorage _storage;
+
+  DocumentReference<Map<String, dynamic>> _subDoc(String uid) =>
+      _firestore.collection('subscriptions').doc(uid);
+
+  CollectionReference<Map<String, dynamic>> get _paymentsCol =>
+      _firestore.collection('payments');
+
+  Future<void> startOrEnsureFreeTrial({required String uid}) async {
+    await _firestore.runTransaction((txn) async {
+      final ref = _subDoc(uid);
+      final snap = await txn.get(ref);
+      if (snap.exists) {
+        final data = snap.data()!;
+        final bool isActive = await _isActiveData(data);
+        if (isActive) return; // ne pas écraser un abonnement actif
+      }
+      final DateTime now = DateTime.now();
+      final DateTime end = DateTime(now.year, now.month + 6, now.day);
+      txn.set(ref, {
+        'plan': 'trial',
+        'isTrial': true,
+        'status': 'active',
+        'currentPeriodStart': Timestamp.fromDate(now),
+        'currentPeriodEnd': Timestamp.fromDate(end),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    });
+  }
+
+  Future<String> submitPostalReceipt({
+    required String uid,
+    required Uint8List receiptBytes,
+    required String plan, // 'monthly' | 'annual'
+    String extension = 'jpg',
+  }) async {
+    final String filename = '${DateTime.now().millisecondsSinceEpoch}.$extension';
+    final String path = 'workers/$uid/payments/$filename';
+    final Reference ref = _storage.ref(path);
+    await ref.putData(receiptBytes, SettableMetadata(contentType: 'image/jpeg'));
+    final String receiptUrl = await ref.getDownloadURL();
+
+    final doc = await _paymentsCol.add({
+      'uid': uid,
+      'plan': plan,
+      'provider': 'poste',
+      'receiptUrl': receiptUrl,
+      'status': 'pending_review',
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    return doc.id;
+  }
+
+  Future<void> activatePlan({
+    required String uid,
+    required String plan, // 'monthly' | 'annual'
+  }) async {
+    final int months = plan == 'annual' ? 12 : 1;
+    await _firestore.runTransaction((txn) async {
+      final ref = _subDoc(uid);
+      final snap = await txn.get(ref);
+      final DateTime now = DateTime.now();
+      DateTime start = now;
+      if (snap.exists) {
+        final data = snap.data()!;
+        final Timestamp? endTs = data['currentPeriodEnd'] as Timestamp?;
+        if (endTs != null && endTs.toDate().isAfter(now)) {
+          start = endTs.toDate();
+        }
+      }
+      final DateTime end = DateTime(start.year, start.month + months, start.day);
+      txn.set(ref, {
+        'plan': plan,
+        'isTrial': false,
+        'status': 'active',
+        'currentPeriodStart': Timestamp.fromDate(start),
+        'currentPeriodEnd': Timestamp.fromDate(end),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    });
+  }
+
+  Future<bool> isActive(String uid) async {
+    final doc = await _subDoc(uid).get();
+    if (!doc.exists) return false;
+    return _isActiveData(doc.data()!);
+  }
+
+  Future<bool> _isActiveData(Map<String, dynamic> data) async {
+    final Timestamp? endTs = data['currentPeriodEnd'] as Timestamp?;
+    if (endTs == null) return false;
+    return endTs.toDate().isAfter(DateTime.now());
+  }
+}
+
 class AppTheme {
   // Couleurs
   static const Color kPrimaryYellow = Color(0xFFFCDC73);
