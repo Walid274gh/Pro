@@ -1089,6 +1089,117 @@ class PushNotificationService {
   }
 }
 
+class UsersSubmitRating extends StatefulWidget {
+  const UsersSubmitRating({
+    super.key,
+    required this.workerUid,
+    required this.requestId,
+  });
+
+  final String workerUid;
+  final String requestId;
+
+  @override
+  State<UsersSubmitRating> createState() => _UsersSubmitRatingState();
+}
+
+class _UsersSubmitRatingState extends State<UsersSubmitRating> {
+  final RatingsRepository _ratings = RatingsRepository();
+  final AuthService _auth = AuthService();
+  final TextEditingController _commentCtrl = TextEditingController();
+  double _score = 5.0;
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _commentCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez vous connecter.')),
+      );
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      await _ratings.addOrUpdateRating(
+        requestId: widget.requestId,
+        workerUid: widget.workerUid,
+        raterUid: user.uid,
+        score: _score,
+        comment: _commentCtrl.text.trim().isEmpty ? null : _commentCtrl.text.trim(),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Merci pour votre évaluation !')),
+      );
+      Navigator.of(context).maybePop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Évaluer le travail')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Note globale', style: AppTheme.kSubheadingStyle),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Slider(
+                    value: _score,
+                    min: 1,
+                    max: 5,
+                    divisions: 8,
+                    label: _score.toStringAsFixed(1),
+                    onChanged: (v) => setState(() => _score = v),
+                  ),
+                ),
+                Text(_score.toStringAsFixed(1), style: AppTheme.kSubheadingStyle),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text('Commentaire (optionnel)', style: AppTheme.kSubheadingStyle),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _commentCtrl,
+              minLines: 3,
+              maxLines: 6,
+              decoration: const InputDecoration(
+                hintText: 'Partagez votre expérience...',
+              ),
+            ),
+            const Spacer(),
+            ElevatedButton.icon(
+              onPressed: _submitting ? null : _submit,
+              icon: const Icon(Icons.send_rounded),
+              label: _submitting ? const Text('Envoi...') : const Text('Envoyer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class AppTheme {
   // Couleurs
   static const Color kPrimaryYellow = Color(0xFFFCDC73);
