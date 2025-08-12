@@ -1470,6 +1470,68 @@ class _WorkersSettingsScreenState extends State<WorkersSettingsScreen> {
   }
 }
 
+class WorkOrdersRepository {
+  WorkOrdersRepository({FirebaseFirestore? firestore})
+      : _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseFirestore _firestore;
+
+  CollectionReference<Map<String, dynamic>> get _requests =>
+      _firestore.collection('requests');
+  CollectionReference<Map<String, dynamic>> get _history =>
+      _firestore.collection('work_history');
+
+  Stream<List<Map<String, dynamic>>> streamAssignedToWorker(String workerUid) {
+    return _requests
+        .where('assignedWorkerUid', isEqualTo: workerUid)
+        .orderBy('updatedAt', descending: true)
+        .limit(100)
+        .snapshots()
+        .map((q) => q.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+  }
+
+  Future<void> completeRequest({
+    required String requestId,
+    required String workerUid,
+  }) async {
+    await _firestore.runTransaction((txn) async {
+      final reqRef = _requests.doc(requestId);
+      final reqSnap = await txn.get(reqRef);
+      if (!reqSnap.exists) {
+        throw StateError('Request not found');
+      }
+      final data = reqSnap.data()!;
+      final String userUid = (data['userUid'] ?? '') as String;
+
+      txn.set(reqRef, {
+        'status': 'completed',
+        'completedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      final histRef = _history.doc();
+      txn.set(histRef, {
+        'requestId': requestId,
+        'userUid': userUid,
+        'workerUid': workerUid,
+        'title': data['title'],
+        'category': data['category'],
+        'createdAt': data['createdAt'],
+        'completedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
+  Stream<List<Map<String, dynamic>>> streamHistory(String workerUid) {
+    return _history
+        .where('workerUid', isEqualTo: workerUid)
+        .orderBy('completedAt', descending: true)
+        .limit(200)
+        .snapshots()
+        .map((q) => q.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+  }
+}
+
 class AppTheme {
   // Couleurs
   static const Color kPrimaryYellow = Color(0xFFFCDC73);
