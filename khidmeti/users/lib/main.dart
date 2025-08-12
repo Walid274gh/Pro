@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 // Flags
 const bool USE_PAYTONE_COLORS = true;
@@ -55,7 +58,12 @@ final TextStyle kBodyStyle = GoogleFonts.inter(
   height: 1.4,
 );
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Note: requires google-services.json and Android setup to actually initialize
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {}
   runApp(const KhidmetiApp());
 }
 
@@ -337,7 +345,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<Widget> _screens = const [
     _HomeView(),
     _Placeholder('Recherche'),
-    _Placeholder('Carte'),
+    MapScreen(),
     _Placeholder('Demandes'),
     _Placeholder('Profil'),
   ];
@@ -671,4 +679,31 @@ abstract class DatabaseService {
 
 abstract class LocationService {
   Future<void> getCurrentLocation();
+}
+
+class MapScreen extends StatelessWidget {
+  static const String tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  static const LatLng initialCenter = LatLng(36.737232, 3.086472); // Alger
+
+  const MapScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: kBackgroundColor,
+      body: Column(
+        children: [
+          const ModernHeader(title: 'Carte'),
+          Expanded(
+            child: FlutterMap(
+              options: const MapOptions(initialCenter: initialCenter, initialZoom: 12),
+              children: const [
+                TileLayer(urlTemplate: tileUrl, userAgentPackageName: 'khidmeti.users'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
