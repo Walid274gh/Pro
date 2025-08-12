@@ -1666,7 +1666,7 @@ class _UsersRequestFormState extends State<UsersRequestForm> {
   final List<XFile> _media = <XFile>[];
   final ImagePicker _picker = ImagePicker();
   final GeolocationService _geo = const GeolocationService();
-  final RequestsRepository _requests = RequestsRepository();
+  final RequestOrchestrator _orchestrator = RequestOrchestrator();
   late final StorageService _storage;
   Position? _pos;
   bool _submitting = false;
@@ -1720,7 +1720,7 @@ class _UsersRequestFormState extends State<UsersRequestForm> {
         );
         urls.add(url);
       }
-      final String id = await _requests.createRequest(
+      final String id = await _orchestrator.createRequestAndNotify(
         userUid: uid,
         title: _titleCtrl.text.trim(),
         description: _descCtrl.text.trim(),
@@ -1731,7 +1731,7 @@ class _UsersRequestFormState extends State<UsersRequestForm> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Demande publiée !')),
+        SnackBar(content: Text('Demande publiée (#$id) !')),
       );
       setState(() {
         _titleCtrl.clear();
