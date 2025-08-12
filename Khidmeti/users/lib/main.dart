@@ -703,6 +703,93 @@ class RequestsRepository {
   }
 }
 
+class RatingsRepository {
+  RatingsRepository({FirebaseFirestore? firestore})
+      : _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseFirestore _firestore;
+
+  CollectionReference<Map<String, dynamic>> get _ratingsCol =>
+      _firestore.collection('ratings');
+  CollectionReference<Map<String, dynamic>> get _profilesCol =>
+      _firestore.collection('profiles');
+
+  // Clé stable pour empêcher plusieurs notations par la même personne pour une demande
+  String _ratingDocId({required String requestId, required String raterUid}) =>
+      '${requestId}_${raterUid}';
+
+  Future<void> addOrUpdateRating({
+    required String requestId,
+    required String workerUid,
+    required String raterUid,
+    required double score, // 1..5
+    String? comment,
+  }) async {
+    final String docId = _ratingDocId(requestId: requestId, raterUid: raterUid);
+
+    await _firestore.runTransaction((txn) async {
+      final ratingRef = _ratingsCol.doc(docId);
+      final profileRef = _profilesCol.doc(workerUid);
+
+      final ratingSnap = await txn.get(ratingRef);
+      final profileSnap = await txn.get(profileRef);
+
+      final double prevScore = ratingSnap.exists
+          ? (ratingSnap.data()!['score'] as num).toDouble()
+          : 0.0;
+
+      final Map<String, dynamic> ratingData = {
+        'requestId': requestId,
+        'workerUid': workerUid,
+        'raterUid': raterUid,
+        'score': score,
+        'comment': comment,
+        'updatedAt': FieldValue.serverTimestamp(),
+        if (!ratingSnap.exists) 'createdAt': FieldValue.serverTimestamp(),
+      };
+      txn.set(ratingRef, ratingData, SetOptions(merge: true));
+
+      double ratingSum = 0.0;
+      int ratingCount = 0;
+      if (profileSnap.exists) {
+        final data = profileSnap.data() as Map<String, dynamic>;
+        ratingSum = (data['ratingSum'] ?? 0).toDouble();
+        ratingCount = (data['ratingCount'] ?? 0) as int;
+      }
+
+      if (ratingSnap.exists) {
+        // Mise à jour d’une note existante
+        ratingSum += (score - prevScore);
+      } else {
+        // Nouvelle note
+        ratingSum += score;
+        ratingCount += 1;
+      }
+
+      final double ratingAvg = ratingCount > 0 ? (ratingSum / ratingCount) : 0.0;
+      txn.set(
+        profileRef,
+        {
+          'ratingSum': ratingSum,
+          'ratingCount': ratingCount,
+          'ratingAvg': double.parse(ratingAvg.toStringAsFixed(2)),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    });
+  }
+
+  Stream<List<Map<String, dynamic>>> streamWorkerRatings(String workerUid) {
+    return _ratingsCol
+        .where('workerUid', isEqualTo: workerUid)
+        .orderBy('createdAt', descending: true)
+        .limit(100)
+        .snapshots()
+        .map((q) => q.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+  }
+}
+
 class WorkersDiscoveryRepository {
   WorkersDiscoveryRepository({FirebaseFirestore? firestore})
       : _firestore = firestore ?? FirebaseFirestore.instance;
