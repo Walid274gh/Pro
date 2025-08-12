@@ -40,26 +40,62 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
       ],
       locale: const Locale('fr'),
-      home: const _HomeScreen(),
+      home: const UsersAppShell(),
     );
   }
 }
 
-class _HomeScreen extends StatelessWidget {
-  const _HomeScreen();
+class UsersAppShell extends StatefulWidget {
+  const UsersAppShell({super.key});
+
+  @override
+  State<UsersAppShell> createState() => _UsersAppShellState();
+}
+
+class _UsersAppShellState extends State<UsersAppShell> {
+  int _currentIndex = 0;
+
+  List<Widget> get _pages => <Widget>[
+        _buildPage('Accueil', 'Recommandations de travailleurs'),
+        _buildPage('Recherche', 'Carte des travailleurs disponibles'),
+        _buildPage('Demande', 'Publier une demande avec médias et localisation'),
+        _buildPage('Paramètres', 'Langue, déconnexion, infos'),
+      ];
+
+  static Widget _buildPage(String title, String subtitle) {
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: Text(title)),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, style: AppTheme.kHeadingStyle),
+            const SizedBox(height: 12),
+            Text(subtitle, style: AppTheme.kBodyStyle),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.kBackgroundColor,
-      appBar: AppBar(
-        title: const Text('KHIDMETI Users'),
+      body: _pages[_currentIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: AppTheme.kPrimaryDark,
+        unselectedItemColor: AppTheme.kSubtitleColor,
         backgroundColor: AppTheme.kPrimaryYellow,
-        foregroundColor: AppTheme.kPrimaryDark,
-        elevation: 4,
-      ),
-      body: Center(
-        child: Text('Bienvenue', style: AppTheme.kHeadingStyle),
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Accueil'),
+          BottomNavigationBarItem(icon: Icon(Icons.map_rounded), label: 'Recherche'),
+          BottomNavigationBarItem(icon: Icon(Icons.add_circle_rounded), label: 'Demande'),
+          BottomNavigationBarItem(icon: Icon(Icons.settings_rounded), label: 'Paramètres'),
+        ],
+        onTap: (int index) => setState(() => _currentIndex = index),
       ),
     );
   }

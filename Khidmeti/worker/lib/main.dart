@@ -45,26 +45,62 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
       ],
       locale: const Locale('fr'),
-      home: const _HomeScreen(),
+      home: const WorkersAppShell(),
     );
   }
 }
 
-class _HomeScreen extends StatelessWidget {
-  const _HomeScreen();
+class WorkersAppShell extends StatefulWidget {
+  const WorkersAppShell({super.key});
+
+  @override
+  State<WorkersAppShell> createState() => _WorkersAppShellState();
+}
+
+class _WorkersAppShellState extends State<WorkersAppShell> {
+  int _currentIndex = 0;
+
+  List<Widget> get _pages => <Widget>[
+        _buildPage('Accueil', 'Statut en ligne/hors ligne'),
+        _buildPage('Recherche', 'Demandes proches publiées'),
+        _buildPage('Historique', 'Travaux réalisés'),
+        _buildPage('Paramètres', 'Abonnement, langue, déconnexion'),
+      ];
+
+  static Widget _buildPage(String title, String subtitle) {
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: Text(title)),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, style: AppTheme.kHeadingStyle),
+            const SizedBox(height: 12),
+            Text(subtitle, style: AppTheme.kBodyStyle),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.kBackgroundColor,
-      appBar: AppBar(
-        title: const Text('KHIDMETI Workers'),
+      body: _pages[_currentIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: AppTheme.kPrimaryDark,
+        unselectedItemColor: AppTheme.kSubtitleColor,
         backgroundColor: AppTheme.kPrimaryYellow,
-        foregroundColor: AppTheme.kPrimaryDark,
-        elevation: 4,
-      ),
-      body: Center(
-        child: Text('Bienvenue', style: AppTheme.kHeadingStyle),
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Accueil'),
+          BottomNavigationBarItem(icon: Icon(Icons.playlist_add_check_rounded), label: 'Recherche'),
+          BottomNavigationBarItem(icon: Icon(Icons.history_rounded), label: 'Historique'),
+          BottomNavigationBarItem(icon: Icon(Icons.settings_rounded), label: 'Paramètres'),
+        ],
+        onTap: (int index) => setState(() => _currentIndex = index),
       ),
     );
   }
