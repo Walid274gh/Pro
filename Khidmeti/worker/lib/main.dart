@@ -1198,6 +1198,157 @@ class SubscriptionRepository {
   }
 }
 
+class WorkersSubscriptionScreen extends StatefulWidget {
+  const WorkersSubscriptionScreen({super.key});
+
+  @override
+  State<WorkersSubscriptionScreen> createState() => _WorkersSubscriptionScreenState();
+}
+
+class _WorkersSubscriptionScreenState extends State<WorkersSubscriptionScreen> {
+  final SubscriptionRepository _subs = SubscriptionRepository();
+  final AuthService _auth = AuthService();
+  final ImagePicker _picker = ImagePicker();
+
+  bool _loading = true;
+  bool _active = false;
+  String _plan = 'monthly'; // or 'annual'
+  String? _error;
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final fb.User? user = _auth.currentUser;
+      if (user == null) {
+        setState(() {
+          _error = 'Veuillez vous connecter.';
+          _loading = false;
+        });
+        return;
+      }
+      final bool act = await _subs.isActive(user.uid);
+      setState(() {
+        _active = act;
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _startTrial() async {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) return;
+    setState(() => _submitting = true);
+    try {
+      await _subs.startOrEnsureFreeTrial(uid: user.uid);
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Essai gratuit activé (6 mois).')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _submitReceipt() async {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) return;
+    final XFile? img = await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    if (img == null) return;
+    setState(() => _submitting = true);
+    try {
+      final id = await _subs.submitPostalReceipt(
+        uid: user.uid,
+        receiptBytes: await img.readAsBytes(),
+        plan: _plan,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reçu envoyé. En attente de validation.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Abonnement')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.verified_rounded, color: AppTheme.kPrimaryTeal),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _active ? 'Abonnement actif' : 'Aucun abonnement actif',
+                    style: AppTheme.kSubheadingStyle,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _submitting ? null : _startTrial,
+              icon: const Icon(Icons.card_giftcard_rounded),
+              label: const Text('Activer essai gratuit (6 mois)'),
+            ),
+            const SizedBox(height: 16),
+            Text('Payer par reçu (poste)', style: AppTheme.kSubheadingStyle),
+            const SizedBox(height: 8),
+            DropdownButton<String>(
+              value: _plan,
+              items: const [
+                DropdownMenuItem(value: 'monthly', child: Text('Mensuel (1000 DZD)')),
+                DropdownMenuItem(value: 'annual', child: Text('Annuel (10 000 DZD)')),
+              ],
+              onChanged: (v) => setState(() => _plan = v ?? _plan),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: _submitting ? null : _submitReceipt,
+              icon: const Icon(Icons.upload_file_rounded),
+              label: const Text('Téléverser le reçu'),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text('Erreur: $_error', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class AppTheme {
   // Couleurs
   static const Color kPrimaryYellow = Color(0xFFFCDC73);
