@@ -340,6 +340,107 @@ class FirestoreDatabaseService implements DatabaseService, Readable, Writable {
   }
 }
 
+class StorageService {
+  final FirebaseStorage _storage;
+
+  StorageService(this._storage);
+
+  Future<String> uploadImage(File imageFile, String path) async {
+    final ref = _storage.ref().child(path);
+    final uploadTask = ref.putFile(imageFile);
+    final snapshot = await uploadTask;
+    return await snapshot.ref.getDownloadURL();
+  }
+
+  Future<String> uploadVideo(File videoFile, String path) async {
+    final ref = _storage.ref().child(path);
+    final uploadTask = ref.putFile(videoFile);
+    final snapshot = await uploadTask;
+    return await snapshot.ref.getDownloadURL();
+  }
+}
+
+class LocationService {
+  final Geolocator _geolocator;
+
+  LocationService(this._geolocator);
+
+  Future<Position> getCurrentLocation() async {
+    bool serviceEnabled = await _geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw Exception('Les services de localisation sont désactivés.');
+    }
+
+    LocationPermission permission = await _geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await _geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        throw Exception('Les permissions de localisation ont été refusées.');
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      throw Exception('Les permissions de localisation sont définitivement refusées.');
+    }
+
+    return await _geolocator.getCurrentPosition();
+  }
+
+  Stream<Position> getLocationStream() {
+    return _geolocator.getPositionStream();
+  }
+
+  Future<List<Placemark>> reverseGeocode(double lat, double lng) async {
+    return await placemarkFromCoordinates(lat, lng);
+  }
+}
+
+class NotificationService {
+  final FirebaseMessaging _messaging;
+
+  NotificationService(this._messaging);
+
+  Future<void> initialize() async {
+    NotificationSettings settings = await _messaging.requestPermission(
+      alert: true,
+      announcement: false,
+      badge: true,
+      carPlay: false,
+      criticalAlert: false,
+      provisional: false,
+      sound: true,
+    );
+
+    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+      print('Notifications autorisées');
+    }
+  }
+
+  Future<void> subscribeToTopic(String topic) async {
+    await _messaging.subscribeToTopic(topic);
+  }
+
+  Future<void> sendNotification(String userId, String message) async {
+    // Implémentation envoi notification
+  }
+}
+
+class ChatService {
+  final DatabaseService _databaseService;
+  final NotificationService _notificationService;
+
+  ChatService(this._databaseService, this._notificationService);
+
+  Future<void> sendMessage(String chatId, Map<String, dynamic> message) async {
+    await _databaseService.createDocument('chats/$chatId/messages', DateTime.now().millisecondsSinceEpoch.toString(), message);
+  }
+
+  Stream<List<Map<String, dynamic>>> getChatMessages(String chatId) {
+    // Stream messages chat
+    return Stream.empty(); // Placeholder
+  }
+}
+
 class AvatarService {
   static const List<String> userAvatars = [
     'assets/avatars/users/avatar_user_1.svg',
@@ -352,6 +453,27 @@ class AvatarService {
   }
 
   List<String> getAllUserAvatars() => userAvatars;
+}
+
+class MapService {
+  static const String tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  static const LatLng algerCenter = LatLng(36.737232, 3.086472);
+
+  List<Marker> buildWorkerMarkers(List<WorkerModel> workers) {
+    return workers.map((worker) => Marker(
+      point: LatLng(worker.location.latitude, worker.location.longitude),
+      builder: (context) => Icon(
+        Icons.location_on,
+        color: kPrimaryTeal,
+        size: 30,
+      ),
+    )).toList();
+  }
+
+  Future<List<LatLng>> calculateRoute(LatLng start, LatLng end) async {
+    // Calcul itinéraire avec OpenRouteService
+    return [start, end];
+  }
 }
 
 // ============================================================================
@@ -873,7 +995,6 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   void _handleAuth() async {
-    // Logique d'authentification
     Navigator.pushReplacementNamed(context, '/home');
   }
 
