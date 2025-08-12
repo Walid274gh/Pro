@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:permission_handler/permission_handler.dart' as perms;
 
@@ -639,8 +640,30 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (kUseFirebase) {
     await Firebase.initializeApp();
+    await _initFcmForWorkers();
   }
   runApp(const KhidmetiWorkerApp());
+}
+
+Future<void> _initFcmForWorkers() async {
+  final messaging = FirebaseMessaging.instance;
+  await messaging.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+  final token = await messaging.getToken();
+  if (token != null) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      await FirebaseFirestore.instance.collection('workers').doc(uid).set({
+        'fcmToken': token,
+      }, SetOptions(merge: true));
+    }
+  }
+  FirebaseMessaging.onMessage.listen((message) {
+    // Foreground handling placeholder
+  });
 }
 
 class KhidmetiWorkerApp extends StatelessWidget {

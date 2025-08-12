@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -663,8 +664,30 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (kUseFirebase) {
     await Firebase.initializeApp();
+    await _initFcmForUsers();
   }
   runApp(const KhidmetiApp());
+}
+
+Future<void> _initFcmForUsers() async {
+  final messaging = FirebaseMessaging.instance;
+  await messaging.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+  final token = await messaging.getToken();
+  if (token != null) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      await FirebaseFirestore.instance.collection('users').doc(uid).set({
+        'fcmToken': token,
+      }, SetOptions(merge: true));
+    }
+  }
+  FirebaseMessaging.onMessage.listen((message) {
+    // Foreground handling placeholder
+  });
 }
 
 class KhidmetiApp extends StatelessWidget {
@@ -755,10 +778,23 @@ class AuthScreen extends StatelessWidget {
                 child: BubbleButton(
                   label: 'Continuer',
                   icon: Icons.arrow_forward,
-                  onPressed: () {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => HomeScreen(selectedAvatar: selectedAvatar)),
+                  onPressed: () async {
+                    final uid = kUseFirebase ? (FirebaseAuth.instance.currentUser?.uid ?? 'local-dev') : 'local-dev';
+                    final usersRepo = UsersRepository(FirebaseFirestore.instance);
+                    final user = UserModel(
+                      id: uid,
+                      name: 'User',
+                      email: 'user@example.com',
+                      selectedAvatar: selectedAvatar ?? AvatarService().getRandomUserAvatar(),
+                      preferences: const {'primaryColor': '#FCDC73', 'accentColor': '#E76268'},
+                      createdAt: DateTime.now(),
                     );
+                    await usersRepo.upsertUser(user);
+                    if (context.mounted) {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (_) => HomeScreen(selectedAvatar: selectedAvatar)),
+                      );
+                    }
                   },
                 ),
               ),
