@@ -1,0 +1,2 @@
+rootProject.name = 'khidmeti_worker'
+include ':app'
