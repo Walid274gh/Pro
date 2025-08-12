@@ -43,7 +43,199 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
       ],
       locale: const Locale('fr'),
-      home: const UsersAppShell(),
+      home: StreamBuilder<fb.User?>(
+        stream: AuthService().authStateChanges(),
+        builder: (context, snapshot) {
+          final fb.User? user = snapshot.data;
+          if (user == null) {
+            return const UsersAuthScreen();
+          }
+          return const UsersAppShell();
+        },
+      ),
+    );
+  }
+}
+
+class UsersAuthScreen extends StatefulWidget {
+  const UsersAuthScreen({super.key});
+
+  @override
+  State<UsersAuthScreen> createState() => _UsersAuthScreenState();
+}
+
+class _UsersAuthScreenState extends State<UsersAuthScreen> {
+  final AuthService _auth = AuthService();
+  final _loginFormKey = GlobalKey<FormState>();
+  final _signupFormKey = GlobalKey<FormState>();
+
+  final TextEditingController _loginEmailCtrl = TextEditingController();
+  final TextEditingController _loginPasswordCtrl = TextEditingController();
+
+  final TextEditingController _signupFirstNameCtrl = TextEditingController();
+  final TextEditingController _signupLastNameCtrl = TextEditingController();
+  final TextEditingController _signupEmailCtrl = TextEditingController();
+  final TextEditingController _signupPasswordCtrl = TextEditingController();
+
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _loginEmailCtrl.dispose();
+    _loginPasswordCtrl.dispose();
+    _signupFirstNameCtrl.dispose();
+    _signupLastNameCtrl.dispose();
+    _signupEmailCtrl.dispose();
+    _signupPasswordCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _login() async {
+    if (!_loginFormKey.currentState!.validate()) return;
+    setState(() => _loading = true);
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email: _loginEmailCtrl.text.trim(),
+        password: _loginPasswordCtrl.text.trim(),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur connexion: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _signup() async {
+    if (!_signupFormKey.currentState!.validate()) return;
+    setState(() => _loading = true);
+    try {
+      await _auth.signUpWithEmailAndPassword(
+        email: _signupEmailCtrl.text.trim(),
+        password: _signupPasswordCtrl.text.trim(),
+        firstName: _signupFirstNameCtrl.text.trim(),
+        lastName: _signupLastNameCtrl.text.trim(),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur inscription: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('KHIDMETI Users')),
+      body: DefaultTabController(
+        length: 2,
+        child: Column(
+          children: [
+            const TabBar(
+              labelColor: AppTheme.kPrimaryDark,
+              unselectedLabelColor: AppTheme.kSubtitleColor,
+              tabs: [
+                Tab(text: 'Connexion'),
+                Tab(text: 'Inscription'),
+              ],
+            ),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _buildLoginForm(),
+                  _buildSignupForm(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoginForm() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Form(
+        key: _loginFormKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Bienvenue', style: AppTheme.kHeadingStyle),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _loginEmailCtrl,
+              decoration: const InputDecoration(labelText: 'Email'),
+              keyboardType: TextInputType.emailAddress,
+              validator: (v) => (v == null || v.isEmpty) ? 'Email requis' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _loginPasswordCtrl,
+              decoration: const InputDecoration(labelText: 'Mot de passe'),
+              obscureText: true,
+              validator: (v) => (v == null || v.length < 6) ? 'Min 6 caractères' : null,
+            ),
+            const Spacer(),
+            ElevatedButton(
+              onPressed: _loading ? null : _login,
+              child: _loading ? const Text('Connexion...') : const Text('Se connecter'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSignupForm() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Form(
+        key: _signupFormKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Créer un compte', style: AppTheme.kHeadingStyle),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _signupFirstNameCtrl,
+              decoration: const InputDecoration(labelText: 'Prénom'),
+              validator: (v) => (v == null || v.isEmpty) ? 'Prénom requis' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _signupLastNameCtrl,
+              decoration: const InputDecoration(labelText: 'Nom'),
+              validator: (v) => (v == null || v.isEmpty) ? 'Nom requis' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _signupEmailCtrl,
+              decoration: const InputDecoration(labelText: 'Email'),
+              keyboardType: TextInputType.emailAddress,
+              validator: (v) => (v == null || v.isEmpty) ? 'Email requis' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _signupPasswordCtrl,
+              decoration: const InputDecoration(labelText: 'Mot de passe'),
+              obscureText: true,
+              validator: (v) => (v == null || v.length < 6) ? 'Min 6 caractères' : null,
+            ),
+            const Spacer(),
+            ElevatedButton(
+              onPressed: _loading ? null : _signup,
+              child: _loading ? const Text('Création...') : const Text('S’inscrire'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
