@@ -179,6 +179,79 @@ class JobRequestModel {
   JobRequestModel({required this.id, required this.clientUserId, required this.workerUserId, required this.serviceId, required this.status});
 }
 
+class ConversationModel {
+  final String id;
+  final List<String> memberIds;
+  final String? lastMessage;
+  final DateTime updatedAt;
+
+  ConversationModel({
+    required this.id,
+    required this.memberIds,
+    required this.lastMessage,
+    required this.updatedAt,
+  });
+}
+
+class MessageModel {
+  final String id;
+  final String conversationId;
+  final String senderId;
+  final String text;
+  final DateTime createdAt;
+
+  MessageModel({
+    required this.id,
+    required this.conversationId,
+    required this.senderId,
+    required this.text,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'conversationId': conversationId,
+        'senderId': senderId,
+        'text': text,
+        'createdAt': Timestamp.fromDate(createdAt),
+      };
+
+  factory MessageModel.fromMap(String id, Map<String, dynamic> map) => MessageModel(
+        id: id,
+        conversationId: map['conversationId'] ?? '',
+        senderId: map['senderId'] ?? '',
+        text: map['text'] ?? '',
+        createdAt: (map['createdAt'] is Timestamp)
+            ? (map['createdAt'] as Timestamp).toDate()
+            : DateTime.now(),
+      );
+}
+
+class ChatRepository {
+  final FirebaseFirestore db;
+  ChatRepository(this.db);
+
+  CollectionReference<Map<String, dynamic>> _conversations() => db.collection('conversations');
+
+  Stream<List<MessageModel>> messagesStream(String conversationId) {
+    if (!kUseFirebase) return const Stream.empty();
+    return _conversations()
+        .doc(conversationId)
+        .collection('messages')
+        .orderBy('createdAt', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => MessageModel.fromMap(d.id, d.data())).toList());
+  }
+
+  Future<void> sendMessage(String conversationId, MessageModel message) async {
+    if (!kUseFirebase) return;
+    final convRef = _conversations().doc(conversationId);
+    await convRef.set({
+      'updatedAt': Timestamp.fromDate(DateTime.now()),
+    }, SetOptions(merge: true));
+    await convRef.collection('messages').add(message.toMap());
+  }
+}
+
 // Services (stubs)
 class AuthService implements AuthenticationService {
   final _auth = FirebaseAuth.instance;
@@ -261,9 +334,26 @@ class PushNotificationSender implements NotificationSender {
 }
 
 class ChatService {
-  Future<void> sendMessage(String toId, String message) async {}
-  Stream<List<String>> messagesStream(String conversationId) async* {
-    yield <String>[];
+  final ChatRepository repository = ChatRepository(FirebaseFirestore.instance);
+
+  String _currentUserId() {
+    return kUseFirebase ? (FirebaseAuth.instance.currentUser?.uid ?? 'worker-demo') : 'worker-demo';
+  }
+
+  Future<void> sendMessage(String conversationId, String text) async {
+    if (text.trim().isEmpty) return;
+    final msg = MessageModel(
+      id: 'new',
+      conversationId: conversationId,
+      senderId: _currentUserId(),
+      text: text.trim(),
+      createdAt: DateTime.now(),
+    );
+    await repository.sendMessage(conversationId, msg);
+  }
+
+  Stream<List<MessageModel>> messagesStream(String conversationId) {
+    return repository.messagesStream(conversationId);
   }
 }
 
@@ -735,6 +825,17 @@ class WorkerHomeScreen extends StatelessWidget {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            PrimaryCard(
+              child: Row(
+                children: [
+                  Expanded(child: Text('Messages', style: kSubheadingStyle)),
+                  BubbleButton(label: 'Ouvrir', icon: Icons.chat_bubble, onPressed: () {
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
+                  }),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -811,6 +912,98 @@ class SubscriptionScreen extends StatelessWidget {
                     BubbleButton(label: 'Payer Carte', icon: Icons.credit_card, onPressed: () => _pay(PaymentMethod.bankCard)),
                   ],
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ChatScreen extends StatefulWidget {
+  const ChatScreen({super.key});
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  final TextEditingController _controller = TextEditingController();
+  final ChatService _chatService = ChatService();
+  final String _conversationId = 'public-demo';
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            const ModernHeader(title: 'Chat'),
+            Expanded(
+              child: kUseFirebase
+                  ? StreamBuilder<List<MessageModel>>(
+                      stream: _chatService.messagesStream(_conversationId),
+                      builder: (context, snapshot) {
+                        final messages = snapshot.data ?? [];
+                        if (messages.isEmpty) {
+                          return const Center(child: Text('Démarrez la conversation', style: kBodyStyle));
+                        }
+                        return ListView.builder(
+                          padding: const EdgeInsets.all(kPadding),
+                          itemCount: messages.length,
+                          itemBuilder: (context, index) {
+                            final m = messages[index];
+                            final isMe = kUseFirebase
+                                ? (m.senderId == (FirebaseAuth.instance.currentUser?.uid ?? 'worker-demo'))
+                                : (m.senderId == 'worker-demo');
+                            return Align(
+                              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(vertical: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: isMe ? kPrimaryTeal : kSurfaceColor,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.06),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: Text(m.text, style: kBodyStyle.copyWith(color: kTextColor)),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    )
+                  : const Center(child: Text('Firebase désactivé', style: kBodyStyle)),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(kPadding),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: PrimaryCard(
+                      child: TextField(
+                        controller: _controller,
+                        decoration: const InputDecoration.collapsed(hintText: 'Votre message...'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  BubbleButton(
+                    label: 'Envoyer',
+                    icon: Icons.send,
+                    onPressed: () async {
+                      final text = _controller.text;
+                      _controller.clear();
+                      await _chatService.sendMessage(_conversationId, text);
+                    },
+                  ),
+                ],
               ),
             ),
           ],
