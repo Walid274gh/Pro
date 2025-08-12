@@ -10,6 +10,7 @@ import 'dart:math';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
+import 'package:image_picker/image_picker.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -60,7 +61,7 @@ class _UsersAppShellState extends State<UsersAppShell> {
   List<Widget> get _pages => <Widget>[
         _buildHomePage(),
         _buildSearchPage(),
-        _buildPage('Demande', 'Publier une demande avec médias et localisation'),
+        _buildRequestPage(),
         _buildPage('Paramètres', 'Langue, déconnexion, infos'),
       ];
 
@@ -94,6 +95,14 @@ class _UsersAppShellState extends State<UsersAppShell> {
       backgroundColor: AppTheme.kBackgroundColor,
       appBar: AppBar(title: const Text('Recherche')),
       body: const UsersSearchMap(),
+    );
+  }
+
+  static Widget _buildRequestPage() {
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Demande')),
+      body: const UsersRequestForm(),
     );
   }
 
@@ -1019,6 +1028,202 @@ class _UsersSearchMapState extends State<UsersSearchMap> {
           ),
         );
       },
+    );
+  }
+}
+
+class UsersRequestForm extends StatefulWidget {
+  const UsersRequestForm({super.key});
+
+  @override
+  State<UsersRequestForm> createState() => _UsersRequestFormState();
+}
+
+class _UsersRequestFormState extends State<UsersRequestForm> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _titleCtrl = TextEditingController();
+  final TextEditingController _descCtrl = TextEditingController();
+  String _category = 'Plomberie';
+  final List<XFile> _media = <XFile>[];
+  final ImagePicker _picker = ImagePicker();
+  final GeolocationService _geo = const GeolocationService();
+  final RequestsRepository _requests = RequestsRepository();
+  late final StorageService _storage;
+  Position? _pos;
+  bool _submitting = false;
+  final List<String> _categories = const [
+    'Plomberie', 'Électricité', 'Nettoyage', 'Livraison', 'Peinture',
+    'Réparation électroménager', 'Maçonnerie', 'Climatisation', 'Baby-sitting', 'Cours particuliers',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _storage = StorageService(role: 'users');
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _geo.ensurePermission();
+    final pos = await _geo.getCurrentPosition();
+    setState(() => _pos = pos);
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _descCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickMedia() async {
+    final List<XFile> files = await _picker.pickMultipleMedia();
+    if (files.isNotEmpty) {
+      setState(() => _media.addAll(files));
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_pos == null) return;
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _submitting = true);
+    try {
+      final String uid = 'demo-user'; // TODO: replace with AuthService.currentUser!.uid when wired
+      final List<String> urls = <String>[];
+      for (final XFile f in _media) {
+        final bytes = await f.readAsBytes();
+        final String ext = f.name.split('.').last;
+        final String url = await _storage.uploadData(
+          uid: uid,
+          data: bytes,
+          category: 'requests',
+          extension: ext,
+        );
+        urls.add(url);
+      }
+      final String id = await _requests.createRequest(
+        userUid: uid,
+        title: _titleCtrl.text.trim(),
+        description: _descCtrl.text.trim(),
+        category: _category,
+        latitude: _pos!.latitude,
+        longitude: _pos!.longitude,
+        mediaUrls: urls,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Demande publiée !')),
+      );
+      setState(() {
+        _titleCtrl.clear();
+        _descCtrl.clear();
+        _media.clear();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_pos == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return Form(
+      key: _formKey,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text('Nouvelle demande', style: AppTheme.kHeadingStyle),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: _category,
+            decoration: const InputDecoration(labelText: 'Catégorie'),
+            items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+            onChanged: (v) => setState(() => _category = v ?? _category),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _titleCtrl,
+            decoration: const InputDecoration(labelText: 'Titre'),
+            validator: (v) => (v == null || v.trim().isEmpty) ? 'Titre requis' : null,
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _descCtrl,
+            decoration: const InputDecoration(labelText: 'Description'),
+            minLines: 3,
+            maxLines: 6,
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: _pickMedia,
+                icon: const Icon(Icons.attach_file_rounded),
+                label: const Text('Ajouter médias'),
+              ),
+              const SizedBox(width: 12),
+              Text('${_media.length} fichiers sélectionnés', style: AppTheme.kBodyStyle),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 220,
+            child: FlutterMap(
+              options: MapOptions(
+                initialCenter: ll.LatLng(_pos!.latitude, _pos!.longitude),
+                initialZoom: 14,
+                onTap: (tapPosition, point) {
+                  setState(() {
+                    _pos = Position(
+                      longitude: point.longitude,
+                      latitude: point.latitude,
+                      timestamp: DateTime.now(),
+                      accuracy: 0,
+                      altitude: 0,
+                      heading: 0,
+                      speed: 0,
+                      speedAccuracy: 0,
+                      altitudeAccuracy: 0,
+                      headingAccuracy: 0,
+                    );
+                  });
+                },
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  subdomains: const ['a', 'b', 'c'],
+                  userAgentPackageName: 'com.khidmeti.khidmeti_users',
+                ),
+                MarkerLayer(markers: [
+                  Marker(
+                    point: ll.LatLng(_pos!.latitude, _pos!.longitude),
+                    width: 44,
+                    height: 44,
+                    child: const Icon(Icons.place_rounded, color: Colors.red, size: 36),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton.icon(
+              onPressed: _submitting ? null : _submit,
+              icon: const Icon(Icons.send_rounded),
+              label: _submitting ? const Text('Envoi...') : const Text('Publier'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
