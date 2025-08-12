@@ -1368,6 +1368,67 @@ class NotificationsTrigger {
   }
 }
 
+class RequestOrchestrator {
+  RequestOrchestrator({
+    FirebaseFirestore? firestore,
+    NotificationsTrigger? notifier,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _notifier = notifier ?? NotificationsTrigger();
+
+  final FirebaseFirestore _firestore;
+  final NotificationsTrigger _notifier;
+
+  static const double _cellSizeDeg = 0.02; // ~2.2km latitude
+
+  String _cellId(double latitude, double longitude) {
+    final int latKey = (latitude / _cellSizeDeg).floor();
+    final int lngKey = (longitude / _cellSizeDeg).floor();
+    return 'c_${latKey}_$lngKey';
+  }
+
+  List<String> _neighborCells(double latitude, double longitude, int radius) {
+    final int latKey = (latitude / _cellSizeDeg).floor();
+    final int lngKey = (longitude / _cellSizeDeg).floor();
+    final List<String> cells = <String>[];
+    for (int dx = -radius; dx <= radius; dx++) {
+      for (int dy = -radius; dy <= radius; dy++) {
+        cells.add('c_${latKey + dx}_${lngKey + dy}');
+      }
+    }
+    return cells;
+  }
+
+  Future<String> createRequestAndNotify({
+    required String userUid,
+    required String title,
+    required String description,
+    required String category,
+    required double latitude,
+    required double longitude,
+    List<String> mediaUrls = const <String>[],
+    int notifyNeighborRadius = 1,
+  }) async {
+    final String cellId = _cellId(latitude, longitude);
+    final DocumentReference<Map<String, dynamic>> doc =
+        await _firestore.collection('requests').add({
+      'userUid': userUid,
+      'title': title,
+      'description': description,
+      'category': category,
+      'status': 'open',
+      'mediaUrls': mediaUrls,
+      'location': GeoPoint(latitude, longitude),
+      'cellId': cellId,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    final List<String> cells = _neighborCells(latitude, longitude, notifyNeighborRadius);
+    await _notifier.notifyNewRequest(requestId: doc.id, targetCellIds: cells);
+    return doc.id;
+  }
+}
+
 class AppTheme {
   // Couleurs
   static const Color kPrimaryYellow = Color(0xFFFCDC73);
