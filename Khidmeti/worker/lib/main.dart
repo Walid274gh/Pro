@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:typed_data';
 import 'dart:math';
+import 'package:geolocator/geolocator.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -340,6 +341,44 @@ class StorageService {
       default:
         return 'application/octet-stream';
     }
+  }
+}
+
+class GeolocationService {
+  const GeolocationService();
+
+  Future<LocationPermission> ensurePermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      // The user might need to enable location services manually
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.deniedForever) {
+      // Permissions are denied forever, handle appropriately in UI later
+    }
+    return permission;
+  }
+
+  Future<Position> getCurrentPosition({
+    LocationAccuracy accuracy = LocationAccuracy.high,
+  }) async {
+    return Geolocator.getCurrentPosition(desiredAccuracy: accuracy);
+  }
+
+  Stream<Position> positionStream({
+    LocationAccuracy accuracy = LocationAccuracy.high,
+    int distanceFilterMeters = 10,
+  }) {
+    return Geolocator.getPositionStream(
+      locationSettings: LocationSettings(
+        accuracy: accuracy,
+        distanceFilter: distanceFilterMeters,
+      ),
+    );
   }
 }
 
