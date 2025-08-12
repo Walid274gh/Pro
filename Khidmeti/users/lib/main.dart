@@ -11,6 +11,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as ll;
 import 'package:image_picker/image_picker.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -1197,6 +1198,48 @@ class _UsersSubmitRatingState extends State<UsersSubmitRating> {
         ),
       ),
     );
+  }
+}
+
+class NotificationsTrigger {
+  NotificationsTrigger({FirebaseFunctions? functions})
+      : _functions = functions ?? FirebaseFunctions.instance;
+
+  final FirebaseFunctions _functions;
+
+  Future<void> notifyNewRequest({
+    required String requestId,
+    required List<String> targetCellIds,
+  }) async {
+    final HttpsCallable callable = _functions.httpsCallable('notifyNewRequest');
+    await callable.call(<String, dynamic>{
+      'requestId': requestId,
+      'cellIds': targetCellIds,
+    });
+  }
+
+  Future<void> notifyRequestAssigned({
+    required String requestId,
+    required String userUid,
+    required String workerUid,
+  }) async {
+    final HttpsCallable callable = _functions.httpsCallable('notifyRequestAssigned');
+    await callable.call(<String, dynamic>{
+      'requestId': requestId,
+      'userUid': userUid,
+      'workerUid': workerUid,
+    });
+  }
+
+  Future<void> notifyRequestCompleted({
+    required String requestId,
+    required String userUid,
+  }) async {
+    final HttpsCallable callable = _functions.httpsCallable('notifyRequestCompleted');
+    await callable.call(<String, dynamic>{
+      'requestId': requestId,
+      'userUid': userUid,
+    });
   }
 }
 
