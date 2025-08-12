@@ -1259,12 +1259,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: BubbleButton(
             text: 'Enregistrer',
-            onPressed: () {
-              // TODO: save avatar to Firestore user document
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Avatar enregistré')),
-              );
-            },
+            onPressed: () async {
+              final user = FirebaseAuth.instance.currentUser;
+              if (user == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Veuillez vous connecter')),
+                );
+                return;
+              }
+              try {
+                await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+                  'selectedAvatar': _selected,
+                });
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Avatar enregistré')),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Erreur lors de l\'enregistrement')),
+                );
+              }
+            }
             primaryColor: kPrimaryDark,
             width: double.infinity,
             height: 52,
