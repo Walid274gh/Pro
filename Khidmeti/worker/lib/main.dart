@@ -1598,6 +1598,118 @@ class _WorkersHistoryScreenState extends State<WorkersHistoryScreen> {
   }
 }
 
+class WorkersAssignedScreen extends StatefulWidget {
+  const WorkersAssignedScreen({super.key});
+
+  @override
+  State<WorkersAssignedScreen> createState() => _WorkersAssignedScreenState();
+}
+
+class _WorkersAssignedScreenState extends State<WorkersAssignedScreen> {
+  final AuthService _auth = AuthService();
+  final WorkOrdersRepository _orders = WorkOrdersRepository();
+
+  bool _submitting = false;
+
+  Future<void> _complete(Map<String, dynamic> m) async {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez vous connecter.')),
+      );
+      return;
+    }
+    final String id = (m['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    setState(() => _submitting = true);
+    try {
+      await _orders.completeRequest(requestId: id, workerUid: user.uid);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Demande marquée comme terminée.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      return Scaffold(
+        backgroundColor: AppTheme.kBackgroundColor,
+        appBar: AppBar(title: const Text('Assignées')),
+        body: Center(
+          child: Text('Non connecté', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+        ),
+      );
+    }
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Demandes assignées')),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _orders.streamAssignedToWorker(user.uid),
+        builder: (context, snapshot) {
+          final items = snapshot.data ?? const <Map<String, dynamic>>[];
+          if (items.isEmpty) {
+            return Center(child: Text('Aucune demande assignée', style: AppTheme.kBodyStyle));
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final m = items[index];
+              final String title = (m['title'] ?? 'Demande').toString();
+              final String description = (m['description'] ?? '—').toString();
+              final String category = (m['category'] ?? '—').toString();
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: AppTheme.kSubheadingStyle),
+                      const SizedBox(height: 6),
+                      Text(description, style: AppTheme.kBodyStyle),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        children: [
+                          Chip(
+                            label: Text(category),
+                            backgroundColor: AppTheme.kButton3DLight,
+                            side: const BorderSide(color: AppTheme.kPrimaryYellow),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: ElevatedButton.icon(
+                          onPressed: _submitting ? null : () => _complete(m),
+                          icon: const Icon(Icons.flag_circle_rounded),
+                          label: const Text('Terminer'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
 class AppTheme {
   // Couleurs
   static const Color kPrimaryYellow = Color(0xFFFCDC73);
