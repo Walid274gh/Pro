@@ -351,7 +351,7 @@ class _HomeScreenState extends State<HomeScreen> {
     SearchScreen(),
     MapScreen(),
     RequestsScreen(),
-    _Placeholder('Profil'),
+    ProfileScreen(),
   ];
 
   @override
@@ -1148,6 +1148,93 @@ class _RequestTile extends StatelessWidget {
         trailing: Text(status, style: kSubheadingStyle.copyWith(color: color, fontSize: 14)),
         onTap: () {},
       ),
+    );
+  }
+}
+
+class ProfileScreen extends StatefulWidget {
+  const ProfileScreen({super.key});
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final AvatarService _avatarService = AvatarService();
+  late String _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = _avatarService.getRandomUserAvatar();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final avatars = _avatarService.getAllUserAvatars();
+    return Column(
+      children: [
+        const ModernHeader(title: 'Profil'),
+        const SizedBox(height: 16),
+        CircleAvatar(
+          radius: 42,
+          backgroundColor: kPrimaryYellow.withOpacity(0.4),
+          child: Text('U', style: kHeadingStyle.copyWith(fontSize: 28)),
+        ),
+        const SizedBox(height: 12),
+        Text('Choisissez un avatar', style: kHeadingStyle.copyWith(fontSize: 18)),
+        const SizedBox(height: 8),
+        Expanded(
+          child: GridView.builder(
+            padding: const EdgeInsets.all(16),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+            ),
+            itemCount: avatars.length,
+            itemBuilder: (context, i) {
+              final path = avatars[i];
+              final isSelected = path == _selected;
+              return GestureDetector(
+                onTap: () => setState(() => _selected = path),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: kSurfaceColor,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: kPrimaryDark.withOpacity(0.06),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                    border: isSelected ? Border.all(color: kPrimaryTeal, width: 2) : null,
+                  ),
+                  padding: const EdgeInsets.all(8),
+                  child: Center(
+                    child: Text('SVG', style: kBodyStyle.copyWith(color: kPrimaryDark)),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: BubbleButton(
+            text: 'Enregistrer',
+            onPressed: () {
+              // TODO: save avatar to Firestore user document
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Avatar enregistré')),
+              );
+            },
+            primaryColor: kPrimaryDark,
+            width: double.infinity,
+            height: 52,
+          ),
+        ),
+      ],
     );
   }
 }
