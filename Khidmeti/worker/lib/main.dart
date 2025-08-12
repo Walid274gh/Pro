@@ -66,7 +66,7 @@ class _WorkersAppShellState extends State<WorkersAppShell> {
         const WorkersHomeOnline(),
         const WorkersNearbyRequestsList(),
         _buildPage('Historique', 'Travaux réalisés'),
-        _buildPage('Paramètres', 'Abonnement, langue, déconnexion'),
+        const WorkersSettingsScreen(),
       ];
 
   static Widget _buildPage(String title, String subtitle) {
