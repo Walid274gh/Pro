@@ -11,6 +11,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'dart:convert';
+import 'dart:async';
 import 'package:crypto/crypto.dart';
 import 'dart:io';
 
@@ -609,6 +610,160 @@ class PushNotificationService {
     for (final String cell in cellIds) {
       await _messaging.unsubscribeFromTopic('geo_$cell');
     }
+  }
+}
+
+class WorkersHomeOnline extends StatefulWidget {
+  const WorkersHomeOnline({super.key});
+
+  @override
+  State<WorkersHomeOnline> createState() => _WorkersHomeOnlineState();
+}
+
+class _WorkersHomeOnlineState extends State<WorkersHomeOnline> {
+  final AuthService _auth = AuthService();
+  final FirestoreProfileRepository _profiles = FirestoreProfileRepository();
+  final GeolocationService _geo = const GeolocationService();
+
+  bool _isOnline = false;
+  Position? _lastPosition;
+  StreamSubscription<Position>? _posSub;
+  bool _initializing = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    try {
+      await _geo.ensurePermission();
+      if (!mounted) return;
+      setState(() => _initializing = false);
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _initializing = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _posSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _toggleOnline(bool value) async {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      setState(() => _error = 'Veuillez vous connecter.');
+      return;
+    }
+
+    setState(() => _isOnline = value);
+
+    if (value) {
+      // Passer en ligne: écouter la position et pousser dans Firestore
+      final Position pos = await _geo.getCurrentPosition();
+      setState(() => _lastPosition = pos);
+      await _profiles.setOnlineStatus(uid: user.uid, isOnline: true);
+      await _profiles.updateLocation(
+        uid: user.uid,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      );
+      _posSub?.cancel();
+      _posSub = _geo
+          .positionStream(distanceFilterMeters: 20)
+          .listen((Position p) async {
+        setState(() => _lastPosition = p);
+        await _profiles.updateLocation(
+          uid: user.uid,
+          latitude: p.latitude,
+          longitude: p.longitude,
+        );
+      });
+    } else {
+      // Hors ligne: arrêter l’écoute et mettre à jour le statut
+      _posSub?.cancel();
+      _posSub = null;
+      await _profiles.setOnlineStatus(uid: user.uid, isOnline: false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_initializing) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      return Center(
+        child: Text('Non connecté', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Accueil')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Statut de disponibilité', style: AppTheme.kHeadingStyle),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.kSurfaceColor,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black12, blurRadius: 12, offset: Offset(0, 6)),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Switch(
+                    value: _isOnline,
+                    activeColor: AppTheme.kSuccessColor,
+                    onChanged: (v) => _toggleOnline(v),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _isOnline ? 'En ligne — visible pour les demandes proches' : 'Hors ligne',
+                      style: AppTheme.kSubheadingStyle,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_lastPosition != null)
+              Row(
+                children: [
+                  const Icon(Icons.place_rounded, color: AppTheme.kPrimaryTeal),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Latitude: ${_lastPosition!.latitude.toStringAsFixed(5)} — Longitude: ${_lastPosition!.longitude.toStringAsFixed(5)}',
+                      style: AppTheme.kBodyStyle,
+                    ),
+                  ),
+                ],
+              ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text('Erreur: $_error', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 
