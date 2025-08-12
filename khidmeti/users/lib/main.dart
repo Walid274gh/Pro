@@ -261,6 +261,25 @@ class RequestModel {
     required this.status,
     required this.createdAt,
   });
+
+  Map<String, dynamic> toMap() => {
+    'userId': userId,
+    'workerId': workerId,
+    'serviceId': serviceId,
+    'status': status,
+    'createdAt': Timestamp.fromDate(createdAt),
+  };
+}
+
+class RequestsRepository {
+  final FirebaseFirestore db;
+  RequestsRepository(this.db);
+
+  Future<String> createRequest(RequestModel request) async {
+    if (!kUseFirebase) return 'local-request';
+    final ref = await db.collection('requests').add(request.toMap());
+    return ref.id;
+  }
 }
 
 // ---------- Services (stubs) ----------
@@ -926,6 +945,7 @@ class HomeScreen extends StatelessWidget {
                                 .collection('workers')
                                 .where('subscriptionStatus', isEqualTo: 'active')
                                 .where('visibilityOnMap', isEqualTo: true)
+                                .where('verificationStatus', isEqualTo: 'verified')
                                 .snapshots()
                             : const Stream.empty(),
                         builder: (context, snapshot) {
@@ -972,16 +992,42 @@ class HomeScreen extends StatelessWidget {
                         if (workers.isEmpty) return Text('Aucun pro visible', style: kBodyStyle);
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: workers.take(5).map((w) => Padding(
-                            padding: const EdgeInsets.only(top: 8.0),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.verified, color: kPrimaryTeal, size: 18),
-                                const SizedBox(width: 6),
-                                Expanded(child: Text(w.name, style: kBodyStyle.copyWith(color: kTextColor))),
-                              ],
+                          children: [
+                            ...workers.take(5).map((w) => Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.verified, color: kPrimaryTeal, size: 18),
+                                  const SizedBox(width: 6),
+                                  Expanded(child: Text(w.name, style: kBodyStyle.copyWith(color: kTextColor))),
+                                ],
+                              ),
+                            )),
+                            const SizedBox(height: 8),
+                            Center(
+                              child: BubbleButton(
+                                label: 'Demande démo',
+                                icon: Icons.send,
+                                onPressed: () async {
+                                  if (workers.isEmpty) return;
+                                  final uid = kUseFirebase ? (FirebaseAuth.instance.currentUser?.uid ?? 'local-dev') : 'local-dev';
+                                  final reqRepo = RequestsRepository(FirebaseFirestore.instance);
+                                  final req = RequestModel(
+                                    id: 'temp',
+                                    userId: uid,
+                                    workerId: workers.first.id,
+                                    serviceId: 'service_demo',
+                                    status: 'pending',
+                                    createdAt: DateTime.now(),
+                                  );
+                                  await reqRepo.createRequest(req);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Demande envoyée')));
+                                  }
+                                },
+                              ),
                             ),
-                          )).toList(),
+                          ],
                         );
                       },
                     ),

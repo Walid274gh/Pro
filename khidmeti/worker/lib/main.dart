@@ -534,6 +534,27 @@ class FirebaseNotificationService implements NotificationServiceBase {
   }
 }
 
+class RequestsRepository {
+  final FirebaseFirestore db;
+  RequestsRepository(this.db);
+
+  Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>> pendingRequestsForWorker(String workerId) {
+    if (!kUseFirebase) return const Stream.empty();
+    return db
+        .collection('requests')
+        .where('workerId', isEqualTo: workerId)
+        .where('status', isEqualTo: 'pending')
+        .orderBy('createdAt', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs);
+  }
+
+  Future<void> updateStatus(String requestId, String status) async {
+    if (!kUseFirebase) return;
+    await db.collection('requests').doc(requestId).set({'status': status}, SetOptions(merge: true));
+  }
+}
+
 // Widgets
 class ModernHeader extends StatelessWidget {
   final String title;
@@ -814,6 +835,7 @@ class WorkerHomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final workerId = FirebaseAuth.instance.currentUser?.uid ?? 'demo-worker-id';
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -878,12 +900,78 @@ class WorkerHomeScreen extends StatelessWidget {
             PrimaryCard(
               child: Row(
                 children: [
+                  Expanded(child: Text('Demandes', style: kSubheadingStyle)),
+                  BubbleButton(label: 'Voir', icon: Icons.inbox, onPressed: () {
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => WorkerRequestsScreen(workerId: workerId)));
+                  }),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            PrimaryCard(
+              child: Row(
+                children: [
                   Expanded(child: Text('Messages', style: kSubheadingStyle)),
                   BubbleButton(label: 'Ouvrir', icon: Icons.chat_bubble, onPressed: () {
                     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
                   }),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class WorkerRequestsScreen extends StatelessWidget {
+  final String workerId;
+  const WorkerRequestsScreen({super.key, required this.workerId});
+
+  @override
+  Widget build(BuildContext context) {
+    final repo = RequestsRepository(FirebaseFirestore.instance);
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const ModernHeader(title: 'Demandes reçues'),
+            Expanded(
+              child: kUseFirebase
+                  ? StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+                      stream: repo.pendingRequestsForWorker(workerId),
+                      builder: (context, snapshot) {
+                        final docs = snapshot.data ?? [];
+                        if (docs.isEmpty) return const Center(child: Text('Aucune demande', style: kBodyStyle));
+                        return ListView.separated(
+                          padding: const EdgeInsets.all(kPadding),
+                          itemCount: docs.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final d = docs[index];
+                            final data = d.data();
+                            return PrimaryCard(
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.person, color: kPrimaryTeal),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text('Client: ${data['userId']} — Service: ${data['serviceId']}', style: kBodyStyle.copyWith(color: kTextColor))),
+                                  BubbleButton(label: 'Accepter', icon: Icons.check, onPressed: () async {
+                                    await repo.updateStatus(d.id, 'accepted');
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Demande acceptée')));
+                                    }
+                                  }),
+                                ],
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    )
+                  : const Center(child: Text('Firebase désactivé', style: kBodyStyle)),
             ),
           ],
         ),
