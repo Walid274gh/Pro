@@ -1,1 +1,1978 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fb;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:typed_data';
+import 'dart:math';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'dart:convert';
+import 'dart:async';
+import 'package:crypto/crypto.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+}
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await FirebaseBootstrap.initialize();
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'KHIDMETI Workers',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(),
+      supportedLocales: const [
+        Locale('fr'),
+        Locale('en'),
+        Locale('ar'),
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      locale: const Locale('fr'),
+      home: const WorkersAppShell(),
+    );
+  }
+}
+
+class WorkersAppShell extends StatefulWidget {
+  const WorkersAppShell({super.key});
+
+  @override
+  State<WorkersAppShell> createState() => _WorkersAppShellState();
+}
+
+class _WorkersAppShellState extends State<WorkersAppShell> {
+  int _currentIndex = 0;
+
+  List<Widget> get _pages => <Widget>[
+        const WorkersHomeOnline(),
+        const WorkersNearbyRequestsList(),
+        const WorkersHistoryScreen(),
+        const WorkersSettingsScreen(),
+      ];
+
+  static Widget _buildPage(String title, String subtitle) {
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: Text(title)),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, style: AppTheme.kHeadingStyle),
+            const SizedBox(height: 12),
+            Text(subtitle, style: AppTheme.kBodyStyle),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _pages[_currentIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: AppTheme.kPrimaryDark,
+        unselectedItemColor: AppTheme.kSubtitleColor,
+        backgroundColor: AppTheme.kPrimaryYellow,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Accueil'),
+          BottomNavigationBarItem(icon: Icon(Icons.playlist_add_check_rounded), label: 'Recherche'),
+          BottomNavigationBarItem(icon: Icon(Icons.history_rounded), label: 'Historique'),
+          BottomNavigationBarItem(icon: Icon(Icons.settings_rounded), label: 'Paramètres'),
+        ],
+        onTap: (int index) => setState(() => _currentIndex = index),
+      ),
+    );
+  }
+}
+
+class FirebaseBootstrap {
+  FirebaseBootstrap._();
+
+  static Future<void> initialize() async {
+    await Firebase.initializeApp();
+
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+    await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+      announcement: false,
+      carPlay: false,
+      criticalAlert: false,
+      provisional: false,
+    );
+
+    await FirebaseMessaging.instance.setAutoInitEnabled(true);
+    await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    final String? token = await FirebaseMessaging.instance.getToken();
+    debugPrint('FCM token (Workers): $token');
+  }
+}
+
+class AuthService {
+  AuthService({fb.FirebaseAuth? auth}) : _auth = auth ?? fb.FirebaseAuth.instance;
+
+  final fb.FirebaseAuth _auth;
+
+  Stream<fb.User?> authStateChanges() => _auth.authStateChanges();
+
+  fb.User? get currentUser => _auth.currentUser;
+
+  Future<fb.UserCredential> signUpWithEmailAndPassword({
+    required String email,
+    required String password,
+    required String firstName,
+    required String lastName,
+    String? phoneNumber,
+  }) async {
+    final fb.UserCredential cred = await _auth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+    await cred.user?.updateDisplayName('$firstName $lastName');
+    if (phoneNumber != null && phoneNumber.isNotEmpty) {
+      // Optionally store phone in user profile via custom claims or Firestore later
+    }
+    return cred;
+  }
+
+  Future<fb.UserCredential> signInWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) {
+    return _auth.signInWithEmailAndPassword(email: email, password: password);
+  }
+
+  Future<void> sendEmailVerification() async {
+    final fb.User? user = _auth.currentUser;
+    if (user != null && !user.emailVerified) {
+      await user.sendEmailVerification();
+    }
+  }
+
+  Future<void> signOut() => _auth.signOut();
+
+  Future<void> startPhoneNumberVerification({
+    required String phoneNumber,
+    required void Function(String verificationId) onCodeSent,
+    required void Function(String verificationId, int? forceResendingToken) onTimeout,
+    required void Function(fb.PhoneAuthCredential credential) onVerified,
+    required void Function(fb.FirebaseAuthException error) onFailed,
+    int? forceResendingToken,
+  }) async {
+    await _auth.verifyPhoneNumber(
+      phoneNumber: phoneNumber,
+      verificationCompleted: onVerified,
+      verificationFailed: onFailed,
+      codeSent: (String verificationId, int? resendToken) => onCodeSent(verificationId),
+      codeAutoRetrievalTimeout: (String verificationId) => onTimeout(verificationId, forceResendingToken),
+      forceResendingToken: forceResendingToken,
+    );
+  }
+
+  Future<fb.UserCredential> confirmSmsCode({
+    required String verificationId,
+    required String smsCode,
+  }) async {
+    final fb.PhoneAuthCredential credential = fb.PhoneAuthProvider.credential(
+      verificationId: verificationId,
+      smsCode: smsCode,
+    );
+    return _auth.signInWithCredential(credential);
+  }
+}
+
+class FirestoreProfileRepository {
+  FirestoreProfileRepository({FirebaseFirestore? firestore})
+      : _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseFirestore _firestore;
+
+  CollectionReference<Map<String, dynamic>> get _profilesCol =>
+      _firestore.collection('profiles');
+
+  Future<void> upsertProfile({
+    required String uid,
+    required Map<String, dynamic> data,
+  }) async {
+    final now = FieldValue.serverTimestamp();
+    final DocumentReference<Map<String, dynamic>> doc = _profilesCol.doc(uid);
+    await doc.set(
+      <String, dynamic>{
+        'updatedAt': now,
+        ...data,
+      },
+      SetOptions(merge: true),
+    );
+    await doc.set(
+      <String, dynamic>{
+        'createdAt': now,
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<Map<String, dynamic>?> getProfile(String uid) async {
+    final snap = await _profilesCol.doc(uid).get();
+    if (!snap.exists) return null;
+    return snap.data();
+  }
+
+  Stream<Map<String, dynamic>?> streamProfile(String uid) {
+    return _profilesCol.doc(uid).snapshots().map((d) => d.data());
+  }
+
+  Future<void> addFcmToken({required String uid, required String token}) async {
+    await _profilesCol.doc(uid).set(
+      {
+        'fcmTokens': FieldValue.arrayUnion([token]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> setOnlineStatus({required String uid, required bool isOnline}) async {
+    await _profilesCol.doc(uid).set(
+      {
+        'isOnline': isOnline,
+        'lastSeenAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> updateLocation({
+    required String uid,
+    required double latitude,
+    required double longitude,
+    double? accuracyMeters,
+  }) async {
+    await _profilesCol.doc(uid).set(
+      {
+        'lastKnownLocation': GeoPoint(latitude, longitude),
+        if (accuracyMeters != null) 'locationAccuracyM': accuracyMeters,
+        'locationUpdatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> ensureUniqueIdCardHash({
+    required String uid,
+    required String idCardHash,
+  }) async {
+    final QuerySnapshot<Map<String, dynamic>> existing = await _profilesCol
+        .where('idCardHash', isEqualTo: idCardHash)
+        .limit(1)
+        .get();
+    if (existing.docs.isNotEmpty && existing.docs.first.id != uid) {
+      throw StateError('ID card already used by another account');
+    }
+    await _profilesCol.doc(uid).set(
+      {
+        'idCardHash': idCardHash,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+}
+
+class StorageService {
+  StorageService({FirebaseStorage? storage, required String role})
+      : _storage = storage ?? FirebaseStorage.instance,
+        _role = role;
+
+  final FirebaseStorage _storage;
+  final String _role; // 'users' or 'workers'
+
+  String _buildPath({
+    required String uid,
+    required String category,
+    required String fileName,
+  }) => '$_role/$uid/$category/$fileName';
+
+  Future<String> uploadData({
+    required String uid,
+    required Uint8List data,
+    required String category,
+    required String extension,
+    String? fileName,
+    String? contentType,
+  }) async {
+    final String safeExt = extension.replaceAll('.', '').toLowerCase();
+    final String inferredType = contentType ?? _contentTypeForExtension(safeExt);
+    final String name = fileName ?? _generateFileName(safeExt);
+    final String fullPath = _buildPath(uid: uid, category: category, fileName: name);
+    final Reference ref = _storage.ref(fullPath);
+    final SettableMetadata meta = SettableMetadata(contentType: inferredType);
+    final UploadTask task = ref.putData(data, meta);
+    await task.whenComplete(() {});
+    return ref.getDownloadURL();
+  }
+
+  Future<void> deleteAtPath({
+    required String uid,
+    required String category,
+    required String fileName,
+  }) async {
+    final String fullPath = _buildPath(uid: uid, category: category, fileName: fileName);
+    await _storage.ref(fullPath).delete();
+  }
+
+  Future<ListResult> listCategory({
+    required String uid,
+    required String category,
+  }) {
+    return _storage.ref('$_role/$uid/$category').listAll();
+  }
+
+  String _generateFileName(String extension) {
+    final int ts = DateTime.now().millisecondsSinceEpoch;
+    final Random rand = Random.secure();
+    final int salt = rand.nextInt(0xFFFFFF);
+    return '$ts-$salt.$extension';
+  }
+
+  String _contentTypeForExtension(String ext) {
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'heic':
+        return 'image/heic';
+      case 'mp4':
+        return 'video/mp4';
+      case 'mov':
+        return 'video/quicktime';
+      case 'pdf':
+        return 'application/pdf';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+}
+
+class GeolocationService {
+  const GeolocationService();
+
+  Future<LocationPermission> ensurePermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      // The user might need to enable location services manually
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.deniedForever) {
+      // Permissions are denied forever, handle appropriately in UI later
+    }
+    return permission;
+  }
+
+  Future<Position> getCurrentPosition({
+    LocationAccuracy accuracy = LocationAccuracy.high,
+  }) async {
+    return Geolocator.getCurrentPosition(desiredAccuracy: accuracy);
+  }
+
+  Stream<Position> positionStream({
+    LocationAccuracy accuracy = LocationAccuracy.high,
+    int distanceFilterMeters = 10,
+  }) {
+    return Geolocator.getPositionStream(
+      locationSettings: LocationSettings(
+        accuracy: accuracy,
+        distanceFilter: distanceFilterMeters,
+      ),
+    );
+  }
+}
+
+class WorkerVerificationService {
+  WorkerVerificationService();
+
+  Future<Map<String, String>> extractNameFromIdCard({
+    required Uint8List idFrontBytes,
+    String language = 'fr',
+  }) async {
+    final InputImage input = InputImage.fromBytes(
+      bytes: idFrontBytes,
+      metadata: InputImageMetadata(
+        size: Size(0, 0),
+        rotation: InputImageRotation.rotation0deg,
+        format: InputImageFormat.bgra8888,
+        bytesPerRow: 0,
+      ),
+    );
+    final TextRecognizer recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+    final RecognizedText result = await recognizer.processImage(input);
+    await recognizer.close();
+
+    String firstName = '';
+    String lastName = '';
+    for (final block in result.blocks) {
+      final String text = block.text;
+      if (text.toLowerCase().contains('prenom') || text.toLowerCase().contains('prénom')) {
+        firstName = _extractTrailingWord(text);
+      }
+      if (text.toLowerCase().contains('nom')) {
+        lastName = _extractTrailingWord(text);
+      }
+    }
+    return {'firstName': firstName, 'lastName': lastName};
+  }
+
+  Future<bool> validateSelfieAgainstId({
+    required Uint8List idFaceBytes,
+    required Uint8List selfieBytes,
+  }) async {
+    final FaceDetectorOptions options = FaceDetectorOptions(
+      enableContours: false,
+      enableLandmarks: true,
+      performanceMode: FaceDetectorMode.accurate,
+    );
+    final FaceDetector detector = FaceDetector(options: options);
+
+    final InputImage idImage = InputImage.fromFilePath(await _tempWrite(idFaceBytes));
+    final InputImage selfieImage = InputImage.fromFilePath(await _tempWrite(selfieBytes));
+
+    final List<Face> idFaces = await detector.processImage(idImage);
+    final List<Face> selfieFaces = await detector.processImage(selfieImage);
+    await detector.close();
+
+    if (idFaces.isEmpty || selfieFaces.isEmpty) return false;
+
+    // Heuristic placeholder: compare bounding box aspect ratios as a lightweight check
+    final double idRatio = idFaces.first.boundingBox.width / idFaces.first.boundingBox.height;
+    final double selfieRatio = selfieFaces.first.boundingBox.width / selfieFaces.first.boundingBox.height;
+    final double delta = (idRatio - selfieRatio).abs();
+    return delta < 0.25; // Accept if roughly similar
+  }
+
+  String computeIdCardHash({
+    required Uint8List idFrontBytes,
+    required Uint8List idBackBytes,
+  }) {
+    final List<int> combined = <int>[]
+      ..addAll(idFrontBytes)
+      ..addAll(idBackBytes);
+    return base64Url.encode(sha256.convert(combined).bytes);
+  }
+
+  String _extractTrailingWord(String text) {
+    final parts = text.split(':');
+    if (parts.length > 1) {
+      return parts.last.trim().split(RegExp(r'\s+')).first;
+    }
+    final tokens = text.trim().split(RegExp(r'\s+'));
+    return tokens.isNotEmpty ? tokens.last : '';
+  }
+
+  Future<String> _tempWrite(Uint8List bytes) async {
+    final String path = '/tmp/${DateTime.now().microsecondsSinceEpoch}.bin';
+    final file = File(path);
+    await file.writeAsBytes(bytes, flush: true);
+    return path;
+  }
+}
+
+class RequestsRepository {
+  RequestsRepository({FirebaseFirestore? firestore})
+      : _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseFirestore _firestore;
+
+  CollectionReference<Map<String, dynamic>> get _col =>
+      _firestore.collection('requests');
+
+  static const double _cellSizeDeg = 0.02;
+
+  String _computeCellId({required double latitude, required double longitude}) {
+    final int latKey = (latitude / _cellSizeDeg).floor();
+    final int lngKey = (longitude / _cellSizeDeg).floor();
+    return 'c_${latKey}_$lngKey';
+  }
+
+  Stream<List<Map<String, dynamic>>> streamNearbyOpenRequests({
+    required double latitude,
+    required double longitude,
+    int neighborRadius = 1, // number of cell rings to include
+  }) {
+    final List<String> targetCells = <String>[];
+    final int latKey = (latitude / _cellSizeDeg).floor();
+    final int lngKey = (longitude / _cellSizeDeg).floor();
+    for (int dx = -neighborRadius; dx <= neighborRadius; dx++) {
+      for (int dy = -neighborRadius; dy <= neighborRadius; dy++) {
+        targetCells.add('c_${latKey + dx}_${lngKey + dy}');
+      }
+    }
+
+    return _col
+        .where('status', isEqualTo: 'open')
+        .where('cellId', whereIn: targetCells)
+        .snapshots()
+        .map((q) => q.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+  }
+
+  Future<void> assignRequest({
+    required String requestId,
+    required String workerUid,
+  }) async {
+    await _col.doc(requestId).set(
+      {
+        'assignedWorkerUid': workerUid,
+        'status': 'assigned',
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+}
+
+class PushNotificationService {
+  PushNotificationService({
+    FirebaseMessaging? messaging,
+    required FirestoreProfileRepository profileRepository,
+    required String role, // 'workers'
+  })  : _messaging = messaging ?? FirebaseMessaging.instance,
+        _profileRepository = profileRepository,
+        _role = role;
+
+  final FirebaseMessaging _messaging;
+  final FirestoreProfileRepository _profileRepository;
+  final String _role;
+
+  Stream<RemoteMessage> get onMessage => FirebaseMessaging.onMessage;
+  Stream<RemoteMessage> get onMessageOpenedApp => FirebaseMessaging.onMessageOpenedApp;
+
+  Future<void> initForSignedInUser(String uid) async {
+    await _messaging.setAutoInitEnabled(true);
+    final String? token = await _messaging.getToken();
+    if (token != null) {
+      await _profileRepository.addFcmToken(uid: uid, token: token);
+    }
+    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      await _profileRepository.addFcmToken(uid: uid, token: newToken);
+    });
+  }
+
+  Future<void> subscribeToRequestTopic(String requestId) async {
+    await _messaging.subscribeToTopic('request_$requestId');
+  }
+
+  Future<void> unsubscribeFromRequestTopic(String requestId) async {
+    await _messaging.unsubscribeFromTopic('request_$requestId');
+  }
+
+  Future<void> subscribeToGeoCells(List<String> cellIds) async {
+    for (final String cell in cellIds) {
+      await _messaging.subscribeToTopic('geo_$cell');
+    }
+  }
+
+  Future<void> unsubscribeFromGeoCells(List<String> cellIds) async {
+    for (final String cell in cellIds) {
+      await _messaging.unsubscribeFromTopic('geo_$cell');
+    }
+  }
+}
+
+class WorkersHomeOnline extends StatefulWidget {
+  const WorkersHomeOnline({super.key});
+
+  @override
+  State<WorkersHomeOnline> createState() => _WorkersHomeOnlineState();
+}
+
+class _WorkersHomeOnlineState extends State<WorkersHomeOnline> {
+  final AuthService _auth = AuthService();
+  final FirestoreProfileRepository _profiles = FirestoreProfileRepository();
+  final GeolocationService _geo = const GeolocationService();
+  final WorkerOnlineOrchestrator _online = WorkerOnlineOrchestrator();
+  final PushNotificationService _push = PushNotificationService(
+    profileRepository: FirestoreProfileRepository(),
+    role: 'workers',
+  );
+
+  bool _isOnline = false;
+  Position? _lastPosition;
+  StreamSubscription<Position>? _posSub;
+  bool _initializing = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    try {
+      await _geo.ensurePermission();
+      if (!mounted) return;
+      setState(() => _initializing = false);
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _initializing = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _posSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _toggleOnline(bool value) async {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      setState(() => _error = 'Veuillez vous connecter.');
+      return;
+    }
+
+    setState(() => _isOnline = value);
+
+    if (value) {
+      await _push.initForSignedInUser(user.uid);
+      final Position pos = await _geo.getCurrentPosition();
+      setState(() => _lastPosition = pos);
+      await _online.goOnline(uid: user.uid, push: _push, cellRadius: 1, distanceFilterMeters: 20);
+    } else {
+      _posSub?.cancel();
+      _posSub = null;
+      await _online.goOffline(uid: user.uid, push: _push, cellRadius: 1);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_initializing) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      return Center(
+        child: Text('Non connecté', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Accueil')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Statut de disponibilité', style: AppTheme.kHeadingStyle),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.kSurfaceColor,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black12, blurRadius: 12, offset: Offset(0, 6)),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Switch(
+                    value: _isOnline,
+                    activeColor: AppTheme.kSuccessColor,
+                    onChanged: (v) => _toggleOnline(v),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _isOnline ? 'En ligne — visible pour les demandes proches' : 'Hors ligne',
+                      style: AppTheme.kSubheadingStyle,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_lastPosition != null)
+              Row(
+                children: [
+                  const Icon(Icons.place_rounded, color: AppTheme.kPrimaryTeal),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Latitude: ${_lastPosition!.latitude.toStringAsFixed(5)} — Longitude: ${_lastPosition!.longitude.toStringAsFixed(5)}',
+                      style: AppTheme.kBodyStyle,
+                    ),
+                  ),
+                ],
+              ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text('Erreur: $_error', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class WorkersNearbyRequestsList extends StatefulWidget {
+  const WorkersNearbyRequestsList({super.key});
+
+  @override
+  State<WorkersNearbyRequestsList> createState() => _WorkersNearbyRequestsListState();
+}
+
+class _WorkersNearbyRequestsListState extends State<WorkersNearbyRequestsList> {
+  final AuthService _auth = AuthService();
+  final GeolocationService _geo = const GeolocationService();
+  final WorkOrderOrchestrator _orchestrator = WorkOrderOrchestrator();
+
+  Position? _pos;
+  Stream<List<Map<String, dynamic>>>? _stream;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      await _geo.ensurePermission();
+      final pos = await _geo.getCurrentPosition();
+      setState(() {
+        _pos = pos;
+        _stream = RequestsRepository().streamNearbyOpenRequests(
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+        );
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _acceptRequest(Map<String, dynamic> req) async {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez vous connecter.')),
+      );
+      return;
+    }
+    final String id = (req['id'] ?? '') as String;
+    if (id.isEmpty) return;
+    try {
+      await _orchestrator.assignRequestAndNotify(requestId: id, workerUid: user.uid);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Demande acceptée.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: $e')),
+      );
+    }
+  }
+
+  double _haversineKm(double lat1, double lon1, double lat2, double lon2) {
+    const double r = 6371.0;
+    final double dLat = _degToRad(lat2 - lat1);
+    final double dLon = _degToRad(lon2 - lon1);
+    final double a =
+        (sin(dLat / 2) * sin(dLat / 2)) +
+            cos(_degToRad(lat1)) *
+                cos(_degToRad(lat2)) *
+                (sin(dLon / 2) * sin(dLon / 2));
+    final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return r * c;
+  }
+
+  double _degToRad(double deg) => deg * (pi / 180.0);
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+        child: Text('Erreur: $_error', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+      );
+    }
+    if (_stream == null || _pos == null) {
+      return Center(child: Text('Position indisponible', style: AppTheme.kBodyStyle));
+    }
+
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Demandes proches')),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _stream,
+        builder: (context, snapshot) {
+          final items = snapshot.data ?? const <Map<String, dynamic>>[];
+          if (items.isEmpty) {
+            return Center(child: Text('Aucune demande ouverte à proximité', style: AppTheme.kBodyStyle));
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final m = items[index];
+              final String title = (m['title'] ?? 'Demande').toString();
+              final String description = (m['description'] ?? '—').toString();
+              final String category = (m['category'] ?? '—').toString();
+              final GeoPoint? gp = m['location'] as GeoPoint?;
+              final double distanceKm = gp == null
+                  ? 99999.0
+                  : _haversineKm(_pos!.latitude, _pos!.longitude, gp.latitude, gp.longitude);
+
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(child: Text(title, style: AppTheme.kSubheadingStyle)),
+                          Text('${distanceKm.toStringAsFixed(1)} km', style: AppTheme.kBodyStyle),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(description, style: AppTheme.kBodyStyle),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        children: [
+                          Chip(
+                            label: Text(category),
+                            backgroundColor: AppTheme.kButton3DLight,
+                            side: const BorderSide(color: AppTheme.kPrimaryYellow),
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _acceptRequest(m),
+                          icon: const Icon(Icons.check_circle_rounded),
+                          label: const Text('Accepter'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class WorkerKycScreen extends StatefulWidget {
+  const WorkerKycScreen({super.key});
+
+  @override
+  State<WorkerKycScreen> createState() => _WorkerKycScreenState();
+}
+
+class _WorkerKycScreenState extends State<WorkerKycScreen> {
+  final WorkerVerificationService _verif = WorkerVerificationService();
+  final StorageService _storage = StorageService(role: 'workers');
+  final FirestoreProfileRepository _profiles = FirestoreProfileRepository();
+  final AuthService _auth = AuthService();
+  final ImagePicker _picker = ImagePicker();
+
+  XFile? _front;
+  XFile? _back;
+  XFile? _selfie;
+  String? _firstName;
+  String? _lastName;
+  String? _error;
+  bool _submitting = false;
+
+  Future<void> _pickFront() async {
+    final f = await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    if (f != null) setState(() => _front = f);
+  }
+
+  Future<void> _pickBack() async {
+    final f = await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    if (f != null) setState(() => _back = f);
+  }
+
+  Future<void> _pickSelfie() async {
+    final f = await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    if (f != null) setState(() => _selfie = f);
+  }
+
+  Future<void> _submit() async {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      setState(() => _error = 'Veuillez vous connecter.');
+      return;
+    }
+    if (_front == null || _back == null || _selfie == null) {
+      setState(() => _error = 'Veuillez fournir recto, verso et selfie.');
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      final frontBytes = await _front!.readAsBytes();
+      final backBytes = await _back!.readAsBytes();
+      final selfieBytes = await _selfie!.readAsBytes();
+
+      final names = await _verif.extractNameFromIdCard(idFrontBytes: frontBytes);
+      final bool faceOk = await _verif.validateSelfieAgainstId(
+        idFaceBytes: frontBytes, // simplification: use front area
+        selfieBytes: selfieBytes,
+      );
+      if (!faceOk) {
+        throw Exception('Vérification faciale échouée.');
+      }
+      final String idHash = _verif.computeIdCardHash(
+        idFrontBytes: frontBytes,
+        idBackBytes: backBytes,
+      );
+      await _profiles.ensureUniqueIdCardHash(uid: user.uid, idCardHash: idHash);
+
+      final String frontUrl = await _storage.uploadData(
+        uid: user.uid,
+        data: frontBytes,
+        category: 'kyc',
+        extension: 'jpg',
+      );
+      final String backUrl = await _storage.uploadData(
+        uid: user.uid,
+        data: backBytes,
+        category: 'kyc',
+        extension: 'jpg',
+      );
+      final String selfieUrl = await _storage.uploadData(
+        uid: user.uid,
+        data: selfieBytes,
+        category: 'kyc',
+        extension: 'jpg',
+      );
+
+      await _profiles.upsertProfile(
+        uid: user.uid,
+        data: {
+          'role': 'worker',
+          'approved': false,
+          'displayName': '${names['firstName'] ?? ''} ${names['lastName'] ?? ''}'.trim(),
+          'kyc': {
+            'frontUrl': frontUrl,
+            'backUrl': backUrl,
+            'selfieUrl': selfieUrl,
+            'hash': idHash,
+          },
+        },
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Documents envoyés pour vérification.')),
+      );
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Vérification d’identité')), 
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text('Téléversez vos documents', style: AppTheme.kHeadingStyle),
+          const SizedBox(height: 12),
+          _buildPickerRow('Recto CNI', _front, _pickFront),
+          const SizedBox(height: 8),
+          _buildPickerRow('Verso CNI', _back, _pickBack),
+          const SizedBox(height: 8),
+          _buildPickerRow('Selfie', _selfie, _pickSelfie),
+          const SizedBox(height: 12),
+          if (_error != null)
+            Text('Erreur: $_error', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: _submitting ? null : _submit,
+            icon: const Icon(Icons.verified_user_rounded),
+            label: _submitting ? const Text('Envoi...') : const Text('Soumettre'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPickerRow(String label, XFile? file, Future<void> Function() onPick) {
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: AppTheme.kSubheadingStyle)),
+        const SizedBox(width: 8),
+        if (file != null)
+          const Icon(Icons.check_circle_rounded, color: AppTheme.kSuccessColor)
+        else
+          const Icon(Icons.error_outline_rounded, color: AppTheme.kErrorColor),
+        const SizedBox(width: 8),
+        ElevatedButton(
+          onPressed: onPick,
+          child: const Text('Choisir'),
+        ),
+      ],
+    );
+  }
+}
+
+class SubscriptionRepository {
+  SubscriptionRepository({FirebaseFirestore? firestore, FirebaseStorage? storage})
+      : _firestore = firestore ?? FirebaseFirestore.instance,
+        _storage = storage ?? FirebaseStorage.instance;
+
+  final FirebaseFirestore _firestore;
+  final FirebaseStorage _storage;
+
+  DocumentReference<Map<String, dynamic>> _subDoc(String uid) =>
+      _firestore.collection('subscriptions').doc(uid);
+
+  CollectionReference<Map<String, dynamic>> get _paymentsCol =>
+      _firestore.collection('payments');
+
+  Future<void> startOrEnsureFreeTrial({required String uid}) async {
+    await _firestore.runTransaction((txn) async {
+      final ref = _subDoc(uid);
+      final snap = await txn.get(ref);
+      if (snap.exists) {
+        final data = snap.data()!;
+        final bool isActive = await _isActiveData(data);
+        if (isActive) return; // ne pas écraser un abonnement actif
+      }
+      final DateTime now = DateTime.now();
+      final DateTime end = DateTime(now.year, now.month + 6, now.day);
+      txn.set(ref, {
+        'plan': 'trial',
+        'isTrial': true,
+        'status': 'active',
+        'currentPeriodStart': Timestamp.fromDate(now),
+        'currentPeriodEnd': Timestamp.fromDate(end),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    });
+  }
+
+  Future<String> submitPostalReceipt({
+    required String uid,
+    required Uint8List receiptBytes,
+    required String plan, // 'monthly' | 'annual'
+    String extension = 'jpg',
+  }) async {
+    final String filename = '${DateTime.now().millisecondsSinceEpoch}.$extension';
+    final String path = 'workers/$uid/payments/$filename';
+    final Reference ref = _storage.ref(path);
+    await ref.putData(receiptBytes, SettableMetadata(contentType: 'image/jpeg'));
+    final String receiptUrl = await ref.getDownloadURL();
+
+    final doc = await _paymentsCol.add({
+      'uid': uid,
+      'plan': plan,
+      'provider': 'poste',
+      'receiptUrl': receiptUrl,
+      'status': 'pending_review',
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    return doc.id;
+  }
+
+  Future<void> activatePlan({
+    required String uid,
+    required String plan, // 'monthly' | 'annual'
+  }) async {
+    final int months = plan == 'annual' ? 12 : 1;
+    await _firestore.runTransaction((txn) async {
+      final ref = _subDoc(uid);
+      final snap = await txn.get(ref);
+      final DateTime now = DateTime.now();
+      DateTime start = now;
+      if (snap.exists) {
+        final data = snap.data()!;
+        final Timestamp? endTs = data['currentPeriodEnd'] as Timestamp?;
+        if (endTs != null && endTs.toDate().isAfter(now)) {
+          start = endTs.toDate();
+        }
+      }
+      final DateTime end = DateTime(start.year, start.month + months, start.day);
+      txn.set(ref, {
+        'plan': plan,
+        'isTrial': false,
+        'status': 'active',
+        'currentPeriodStart': Timestamp.fromDate(start),
+        'currentPeriodEnd': Timestamp.fromDate(end),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    });
+  }
+
+  Future<bool> isActive(String uid) async {
+    final doc = await _subDoc(uid).get();
+    if (!doc.exists) return false;
+    return _isActiveData(doc.data()!);
+  }
+
+  Future<bool> _isActiveData(Map<String, dynamic> data) async {
+    final Timestamp? endTs = data['currentPeriodEnd'] as Timestamp?;
+    if (endTs == null) return false;
+    return endTs.toDate().isAfter(DateTime.now());
+  }
+}
+
+class WorkersSubscriptionScreen extends StatefulWidget {
+  const WorkersSubscriptionScreen({super.key});
+
+  @override
+  State<WorkersSubscriptionScreen> createState() => _WorkersSubscriptionScreenState();
+}
+
+class _WorkersSubscriptionScreenState extends State<WorkersSubscriptionScreen> {
+  final SubscriptionRepository _subs = SubscriptionRepository();
+  final AuthService _auth = AuthService();
+  final ImagePicker _picker = ImagePicker();
+
+  bool _loading = true;
+  bool _active = false;
+  String _plan = 'monthly'; // or 'annual'
+  String? _error;
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final fb.User? user = _auth.currentUser;
+      if (user == null) {
+        setState(() {
+          _error = 'Veuillez vous connecter.';
+          _loading = false;
+        });
+        return;
+      }
+      final bool act = await _subs.isActive(user.uid);
+      setState(() {
+        _active = act;
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _startTrial() async {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) return;
+    setState(() => _submitting = true);
+    try {
+      await _subs.startOrEnsureFreeTrial(uid: user.uid);
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Essai gratuit activé (6 mois).')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _submitReceipt() async {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) return;
+    final XFile? img = await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    if (img == null) return;
+    setState(() => _submitting = true);
+    try {
+      final id = await _subs.submitPostalReceipt(
+        uid: user.uid,
+        receiptBytes: await img.readAsBytes(),
+        plan: _plan,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reçu envoyé. En attente de validation.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: $e')));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Abonnement')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.verified_rounded, color: AppTheme.kPrimaryTeal),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _active ? 'Abonnement actif' : 'Aucun abonnement actif',
+                    style: AppTheme.kSubheadingStyle,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _submitting ? null : _startTrial,
+              icon: const Icon(Icons.card_giftcard_rounded),
+              label: const Text('Activer essai gratuit (6 mois)'),
+            ),
+            const SizedBox(height: 16),
+            Text('Payer par reçu (poste)', style: AppTheme.kSubheadingStyle),
+            const SizedBox(height: 8),
+            DropdownButton<String>(
+              value: _plan,
+              items: const [
+                DropdownMenuItem(value: 'monthly', child: Text('Mensuel (1000 DZD)')),
+                DropdownMenuItem(value: 'annual', child: Text('Annuel (10 000 DZD)')),
+              ],
+              onChanged: (v) => setState(() => _plan = v ?? _plan),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: _submitting ? null : _submitReceipt,
+              icon: const Icon(Icons.upload_file_rounded),
+              label: const Text('Téléverser le reçu'),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text('Erreur: $_error', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class WorkersSettingsScreen extends StatefulWidget {
+  const WorkersSettingsScreen({super.key});
+
+  @override
+  State<WorkersSettingsScreen> createState() => _WorkersSettingsScreenState();
+}
+
+class _WorkersSettingsScreenState extends State<WorkersSettingsScreen> {
+  final AuthService _auth = AuthService();
+  final SubscriptionRepository _subs = SubscriptionRepository();
+
+  String _language = 'fr';
+  bool _loading = true;
+  bool _active = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      final fb.User? user = _auth.currentUser;
+      if (user != null) {
+        final bool act = await _subs.isActive(user.uid);
+        setState(() {
+          _active = act;
+          _loading = false;
+        });
+      } else {
+        setState(() => _loading = false);
+      }
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _signOut() async {
+    await _auth.signOut();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Déconnecté.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Paramètres')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.verified_rounded, color: AppTheme.kPrimaryTeal),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _active ? 'Abonnement actif' : 'Aucun abonnement actif',
+                  style: AppTheme.kSubheadingStyle,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const WorkerKycScreen()),
+              );
+            },
+            icon: const Icon(Icons.verified_user_rounded),
+            label: const Text('Vérification d’identité (KYC)'),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const WorkersSubscriptionScreen()),
+              );
+            },
+            icon: const Icon(Icons.subscriptions_rounded),
+            label: const Text('Abonnement'),
+          ),
+          const SizedBox(height: 12),
+          Text('Langue', style: AppTheme.kSubheadingStyle),
+          const SizedBox(height: 8),
+          DropdownButton<String>(
+            value: _language,
+            items: const [
+              DropdownMenuItem(value: 'fr', child: Text('Français')),
+              DropdownMenuItem(value: 'en', child: Text('English')),
+              DropdownMenuItem(value: 'ar', child: Text('العربية')),
+            ],
+            onChanged: (v) => setState(() => _language = v ?? _language),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: _signOut,
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('Déconnexion'),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text('Erreur: $_error', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class WorkOrdersRepository {
+  WorkOrdersRepository({FirebaseFirestore? firestore})
+      : _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseFirestore _firestore;
+
+  CollectionReference<Map<String, dynamic>> get _requests =>
+      _firestore.collection('requests');
+  CollectionReference<Map<String, dynamic>> get _history =>
+      _firestore.collection('work_history');
+
+  Stream<List<Map<String, dynamic>>> streamAssignedToWorker(String workerUid) {
+    return _requests
+        .where('assignedWorkerUid', isEqualTo: workerUid)
+        .orderBy('updatedAt', descending: true)
+        .limit(100)
+        .snapshots()
+        .map((q) => q.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+  }
+
+  Future<void> completeRequest({
+    required String requestId,
+    required String workerUid,
+  }) async {
+    await _firestore.runTransaction((txn) async {
+      final reqRef = _requests.doc(requestId);
+      final reqSnap = await txn.get(reqRef);
+      if (!reqSnap.exists) {
+        throw StateError('Request not found');
+      }
+      final data = reqSnap.data()!;
+      final String userUid = (data['userUid'] ?? '') as String;
+
+      txn.set(reqRef, {
+        'status': 'completed',
+        'completedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      final histRef = _history.doc();
+      txn.set(histRef, {
+        'requestId': requestId,
+        'userUid': userUid,
+        'workerUid': workerUid,
+        'title': data['title'],
+        'category': data['category'],
+        'createdAt': data['createdAt'],
+        'completedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
+  Stream<List<Map<String, dynamic>>> streamHistory(String workerUid) {
+    return _history
+        .where('workerUid', isEqualTo: workerUid)
+        .orderBy('completedAt', descending: true)
+        .limit(200)
+        .snapshots()
+        .map((q) => q.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+  }
+}
+
+class WorkersHistoryScreen extends StatefulWidget {
+  const WorkersHistoryScreen({super.key});
+
+  @override
+  State<WorkersHistoryScreen> createState() => _WorkersHistoryScreenState();
+}
+
+class _WorkersHistoryScreenState extends State<WorkersHistoryScreen> {
+  final WorkOrdersRepository _repo = WorkOrdersRepository();
+  final AuthService _auth = AuthService();
+
+  @override
+  Widget build(BuildContext context) {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      return Scaffold(
+        backgroundColor: AppTheme.kBackgroundColor,
+        appBar: AppBar(title: const Text('Historique')),
+        body: Center(
+          child: Text('Non connecté', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+        ),
+      );
+    }
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Historique')),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _repo.streamHistory(user.uid),
+        builder: (context, snapshot) {
+          final items = snapshot.data ?? const <Map<String, dynamic>>[];
+          if (items.isEmpty) {
+            return Center(child: Text('Aucun travail terminé', style: AppTheme.kBodyStyle));
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final m = items[index];
+              final String title = (m['title'] ?? 'Travail').toString();
+              final String category = (m['category'] ?? '—').toString();
+              final Timestamp? completedAtTs = m['completedAt'] as Timestamp?;
+              final String completedAtStr = completedAtTs != null
+                  ? completedAtTs.toDate().toLocal().toString()
+                  : '';
+              return Card(
+                child: ListTile(
+                  title: Text(title, style: AppTheme.kSubheadingStyle),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 4),
+                      Text('Catégorie: $category', style: AppTheme.kBodyStyle),
+                      if (completedAtStr.isNotEmpty)
+                        Text('Terminé: $completedAtStr', style: AppTheme.kBodyStyle),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class WorkersAssignedScreen extends StatefulWidget {
+  const WorkersAssignedScreen({super.key});
+
+  @override
+  State<WorkersAssignedScreen> createState() => _WorkersAssignedScreenState();
+}
+
+class _WorkersAssignedScreenState extends State<WorkersAssignedScreen> {
+  final AuthService _auth = AuthService();
+  final WorkOrderOrchestrator _orchestrator = WorkOrderOrchestrator();
+
+  bool _submitting = false;
+
+  Future<void> _complete(Map<String, dynamic> m) async {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez vous connecter.')),
+      );
+      return;
+    }
+    final String id = (m['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    setState(() => _submitting = true);
+    try {
+      await _orchestrator.completeRequestAndNotify(requestId: id, workerUid: user.uid);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Demande marquée comme terminée.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      return Scaffold(
+        backgroundColor: AppTheme.kBackgroundColor,
+        appBar: AppBar(title: const Text('Assignées')),
+        body: Center(
+          child: Text('Non connecté', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+        ),
+      );
+    }
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Demandes assignées')),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: WorkOrdersRepository().streamAssignedToWorker(user.uid),
+        builder: (context, snapshot) {
+          final items = snapshot.data ?? const <Map<String, dynamic>>[];
+          if (items.isEmpty) {
+            return Center(child: Text('Aucune demande assignée', style: AppTheme.kBodyStyle));
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final m = items[index];
+              final String title = (m['title'] ?? 'Demande').toString();
+              final String description = (m['description'] ?? '—').toString();
+              final String category = (m['category'] ?? '—').toString();
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: AppTheme.kSubheadingStyle),
+                      const SizedBox(height: 6),
+                      Text(description, style: AppTheme.kBodyStyle),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        children: [
+                          Chip(
+                            label: Text(category),
+                            backgroundColor: AppTheme.kButton3DLight,
+                            side: const BorderSide(color: AppTheme.kPrimaryYellow),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: ElevatedButton.icon(
+                          onPressed: _submitting ? null : () => _complete(m),
+                          icon: const Icon(Icons.flag_circle_rounded),
+                          label: const Text('Terminer'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class WorkOrderOrchestrator {
+  WorkOrderOrchestrator({
+    FirebaseFirestore? firestore,
+    RequestsRepository? requestsRepository,
+    WorkOrdersRepository? workOrdersRepository,
+    NotificationsTrigger? notifications,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _requests = requestsRepository ?? RequestsRepository(),
+        _orders = workOrdersRepository ?? WorkOrdersRepository(),
+        _notify = notifications ?? NotificationsTrigger();
+
+  final FirebaseFirestore _firestore;
+  final RequestsRepository _requests;
+  final WorkOrdersRepository _orders;
+  final NotificationsTrigger _notify;
+
+  Future<void> assignRequestAndNotify({
+    required String requestId,
+    required String workerUid,
+  }) async {
+    final doc = await _firestore.collection('requests').doc(requestId).get();
+    if (!doc.exists) {
+      throw StateError('Request not found');
+    }
+    final String userUid = (doc.data()?['userUid'] ?? '') as String;
+    await _requests.assignRequest(requestId: requestId, workerUid: workerUid);
+    await _notify.notifyWorkerAccepted(
+      requestId: requestId,
+      userUid: userUid,
+      workerUid: workerUid,
+    );
+  }
+
+  Future<void> completeRequestAndNotify({
+    required String requestId,
+    required String workerUid,
+  }) async {
+    final doc = await _firestore.collection('requests').doc(requestId).get();
+    if (!doc.exists) {
+      throw StateError('Request not found');
+    }
+    final String userUid = (doc.data()?['userUid'] ?? '') as String;
+    await _orders.completeRequest(requestId: requestId, workerUid: workerUid);
+    await _notify.notifyCompleted(
+      requestId: requestId,
+      userUid: userUid,
+    );
+  }
+}
+
+class NotificationsTrigger {
+  NotificationsTrigger({FirebaseFunctions? functions})
+      : _functions = functions ?? FirebaseFunctions.instance;
+
+  final FirebaseFunctions _functions;
+
+  Future<void> notifyWorkerAccepted({
+    required String requestId,
+    required String userUid,
+    required String workerUid,
+  }) async {
+    final callable = _functions.httpsCallable('notifyRequestAssigned');
+    await callable.call(<String, dynamic>{
+      'requestId': requestId,
+      'userUid': userUid,
+      'workerUid': workerUid,
+    });
+  }
+
+  Future<void> notifyCompleted({
+    required String requestId,
+    required String userUid,
+  }) async {
+    final callable = _functions.httpsCallable('notifyRequestCompleted');
+    await callable.call(<String, dynamic>{
+      'requestId': requestId,
+      'userUid': userUid,
+    });
+  }
+}
+
+class GeoCellsManager {
+  GeoCellsManager({this.cellSizeDeg = 0.02});
+
+  final double cellSizeDeg; // ~2.2km latitude par défaut
+
+  String cellId(double latitude, double longitude) {
+    final int latKey = (latitude / cellSizeDeg).floor();
+    final int lngKey = (longitude / cellSizeDeg).floor();
+    return 'c_${latKey}_$lngKey';
+    }
+
+  List<String> neighborCells(double latitude, double longitude, int radius) {
+    final int latKey = (latitude / cellSizeDeg).floor();
+    final int lngKey = (longitude / cellSizeDeg).floor();
+    final List<String> cells = <String>[];
+    for (int dx = -radius; dx <= radius; dx++) {
+      for (int dy = -radius; dy <= radius; dy++) {
+        cells.add('c_${latKey + dx}_${lngKey + dy}');
+      }
+    }
+    return cells;
+  }
+
+  Future<void> subscribeArea({
+    required double latitude,
+    required double longitude,
+    required PushNotificationService push,
+    int radius = 1,
+  }) async {
+    final cells = neighborCells(latitude, longitude, radius);
+    await push.subscribeToGeoCells(cells);
+  }
+
+  Future<void> unsubscribeArea({
+    required double latitude,
+    required double longitude,
+    required PushNotificationService push,
+    int radius = 1,
+  }) async {
+    final cells = neighborCells(latitude, longitude, radius);
+    await push.unsubscribeFromGeoCells(cells);
+  }
+}
+
+class WorkerOnlineOrchestrator {
+  WorkerOnlineOrchestrator({
+    GeolocationService? geolocationService,
+    FirestoreProfileRepository? profiles,
+    GeoCellsManager? cellsManager,
+  })  : _geo = geolocationService ?? const GeolocationService(),
+        _profiles = profiles ?? FirestoreProfileRepository(),
+        _cells = cellsManager ?? GeoCellsManager();
+
+  final GeolocationService _geo;
+  final FirestoreProfileRepository _profiles;
+  final GeoCellsManager _cells;
+
+  StreamSubscription<Position>? _posSub;
+  double? _lastLat;
+  double? _lastLng;
+
+  Future<void> goOnline({
+    required String uid,
+    required PushNotificationService push,
+    int cellRadius = 1,
+    int distanceFilterMeters = 20,
+  }) async {
+    await _geo.ensurePermission();
+    final pos = await _geo.getCurrentPosition();
+    _lastLat = pos.latitude;
+    _lastLng = pos.longitude;
+
+    await _profiles.setOnlineStatus(uid: uid, isOnline: true);
+    await _profiles.updateLocation(uid: uid, latitude: pos.latitude, longitude: pos.longitude);
+    await _cells.subscribeArea(latitude: pos.latitude, longitude: pos.longitude, push: push, radius: cellRadius);
+
+    _posSub?.cancel();
+    _posSub = _geo
+        .positionStream(distanceFilterMeters: distanceFilterMeters)
+        .listen((p) async {
+      _lastLat = p.latitude;
+      _lastLng = p.longitude;
+      await _profiles.updateLocation(uid: uid, latitude: p.latitude, longitude: p.longitude);
+    });
+  }
+
+  Future<void> goOffline({
+    required String uid,
+    required PushNotificationService push,
+    int cellRadius = 1,
+  }) async {
+    _posSub?.cancel();
+    _posSub = null;
+    await _profiles.setOnlineStatus(uid: uid, isOnline: false);
+    if (_lastLat != null && _lastLng != null) {
+      await _cells.unsubscribeArea(
+        latitude: _lastLat!,
+        longitude: _lastLng!,
+        push: push,
+        radius: cellRadius,
+      );
+    }
+  }
+}
+
+class AppTheme {
+  // Couleurs
+  static const Color kPrimaryYellow = Color(0xFFFCDC73);
+  static const Color kPrimaryRed = Color(0xFFE76268);
+  static const Color kPrimaryDark = Color(0xFF193948);
+  static const Color kPrimaryTeal = Color(0xFF4FADCD);
+  static const Color kBackgroundColor = Color(0xFFFFF8E7);
+  static const Color kSurfaceColor = Color(0xFFFFFFFF);
+  static const Color kTextColor = Color(0xFF193948);
+  static const Color kSubtitleColor = Color(0xFF6B7280);
+  static const Color kSuccessColor = Color(0xFF10B981);
+  static const Color kErrorColor = Color(0xFFE76268);
+  static const Color kButton3DLight = Color(0xFFFEF3C7);
+  static const Color kButton3DShadow = Color(0xFF92400E);
+  static const Color kButtonGradient1 = Color(0xFFFCDC73);
+  static const Color kButtonGradient2 = Color(0xFFF59E0B);
+
+  // Typographies
+  static const TextStyle kHeadingStyle = TextStyle(
+    fontFamily: 'Paytone One',
+    fontSize: 24,
+    fontWeight: FontWeight.bold,
+    color: kPrimaryDark,
+    letterSpacing: -0.5,
+  );
+  static const TextStyle kSubheadingStyle = TextStyle(
+    fontFamily: 'Inter',
+    fontSize: 18,
+    fontWeight: FontWeight.w600,
+    color: kTextColor,
+  );
+  static const TextStyle kBodyStyle = TextStyle(
+    fontFamily: 'Inter',
+    fontSize: 14,
+    fontWeight: FontWeight.w400,
+    color: kSubtitleColor,
+    height: 1.4,
+  );
+
+  static ThemeData light() {
+    final ColorScheme colorScheme = ColorScheme.fromSeed(
+      seedColor: kPrimaryYellow,
+      brightness: Brightness.light,
+    ).copyWith(
+      primary: kPrimaryYellow,
+      onPrimary: kPrimaryDark,
+      secondary: kPrimaryTeal,
+      onSecondary: kPrimaryDark,
+      error: kErrorColor,
+      surface: kSurfaceColor,
+      onSurface: kTextColor,
+    );
+
+    return ThemeData(
+      useMaterial3: false,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: kBackgroundColor,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: kPrimaryYellow,
+        foregroundColor: kPrimaryDark,
+        elevation: 4,
+        centerTitle: true,
+      ),
+      textTheme: const TextTheme(
+        headlineSmall: kHeadingStyle,
+        titleMedium: kSubheadingStyle,
+        bodyMedium: kBodyStyle,
+        bodySmall: kBodyStyle,
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: const WidgetStatePropertyAll(kPrimaryYellow),
+          foregroundColor: const WidgetStatePropertyAll(kPrimaryDark),
+          elevation: const WidgetStatePropertyAll(4),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          ),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          ),
+        ),
+      ),
+      cardTheme: CardThemeData(
+        color: kSurfaceColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        elevation: 8,
+        margin: const EdgeInsets.all(12),
+      ),
+    );
+  }
+}
