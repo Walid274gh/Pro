@@ -1699,6 +1699,56 @@ class _WorkersAssignedScreenState extends State<WorkersAssignedScreen> {
   }
 }
 
+class WorkOrderOrchestrator {
+  WorkOrderOrchestrator({
+    FirebaseFirestore? firestore,
+    RequestsRepository? requestsRepository,
+    WorkOrdersRepository? workOrdersRepository,
+    NotificationsTrigger? notifications,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _requests = requestsRepository ?? RequestsRepository(),
+        _orders = workOrdersRepository ?? WorkOrdersRepository(),
+        _notify = notifications ?? NotificationsTrigger();
+
+  final FirebaseFirestore _firestore;
+  final RequestsRepository _requests;
+  final WorkOrdersRepository _orders;
+  final NotificationsTrigger _notify;
+
+  Future<void> assignRequestAndNotify({
+    required String requestId,
+    required String workerUid,
+  }) async {
+    final doc = await _firestore.collection('requests').doc(requestId).get();
+    if (!doc.exists) {
+      throw StateError('Request not found');
+    }
+    final String userUid = (doc.data()?['userUid'] ?? '') as String;
+    await _requests.assignRequest(requestId: requestId, workerUid: workerUid);
+    await _notify.notifyWorkerAccepted(
+      requestId: requestId,
+      userUid: userUid,
+      workerUid: workerUid,
+    );
+  }
+
+  Future<void> completeRequestAndNotify({
+    required String requestId,
+    required String workerUid,
+  }) async {
+    final doc = await _firestore.collection('requests').doc(requestId).get();
+    if (!doc.exists) {
+      throw StateError('Request not found');
+    }
+    final String userUid = (doc.data()?['userUid'] ?? '') as String;
+    await _orders.completeRequest(requestId: requestId, workerUid: workerUid);
+    await _notify.notifyCompleted(
+      requestId: requestId,
+      userUid: userUid,
+    );
+  }
+}
+
 class NotificationsTrigger {
   NotificationsTrigger({FirebaseFunctions? functions})
       : _functions = functions ?? FirebaseFunctions.instance;
