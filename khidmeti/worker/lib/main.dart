@@ -510,3 +510,30 @@ abstract class DatabaseService {
 abstract class LocationService {
   Future<void> getCurrentLocation();
 }
+
+class MapScreen extends StatelessWidget {
+  static const String tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  static const LatLng initialCenter = LatLng(36.737232, 3.086472);
+
+  const MapScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: kBackgroundColor,
+      body: Column(
+        children: [
+          const ModernHeader(title: 'Carte'),
+          Expanded(
+            child: FlutterMap(
+              options: const MapOptions(initialCenter: initialCenter, initialZoom: 12),
+              children: const [
+                TileLayer(urlTemplate: tileUrl, userAgentPackageName: 'khidmeti.worker'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -707,3 +707,175 @@ class MapScreen extends StatelessWidget {
     );
   }
 }
+
+// Data Models
+class UserModel {
+  final String id;
+  final String firstName;
+  final String lastName;
+  final String email;
+  final String? phoneNumber;
+  final String selectedAvatar;
+  final Map<String, dynamic> preferences;
+  final GeoPoint? location;
+  final DateTime createdAt;
+  final bool isActive;
+
+  UserModel({
+    required this.id,
+    required this.firstName,
+    required this.lastName,
+    required this.email,
+    this.phoneNumber,
+    required this.selectedAvatar,
+    required this.preferences,
+    this.location,
+    required this.createdAt,
+    this.isActive = true,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'firstName': firstName,
+        'lastName': lastName,
+        'email': email,
+        'phoneNumber': phoneNumber,
+        'selectedAvatar': selectedAvatar,
+        'preferences': preferences,
+        'location': location,
+        'createdAt': createdAt.millisecondsSinceEpoch,
+        'isActive': isActive,
+      };
+
+  factory UserModel.fromMap(Map<String, dynamic> map) => UserModel(
+        id: map['id'],
+        firstName: map['firstName'],
+        lastName: map['lastName'],
+        email: map['email'],
+        phoneNumber: map['phoneNumber'],
+        selectedAvatar: map['selectedAvatar'],
+        preferences: Map<String, dynamic>.from(map['preferences'] ?? {}),
+        location: map['location'],
+        createdAt: DateTime.fromMillisecondsSinceEpoch(map['createdAt'] ?? 0),
+        isActive: map['isActive'] ?? true,
+      );
+
+  UserModel copyWith({
+    String? firstName,
+    String? lastName,
+    String? email,
+    String? phoneNumber,
+    String? selectedAvatar,
+    Map<String, dynamic>? preferences,
+    GeoPoint? location,
+    bool? isActive,
+  }) {
+    return UserModel(
+      id: id,
+      firstName: firstName ?? this.firstName,
+      lastName: lastName ?? this.lastName,
+      email: email ?? this.email,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      selectedAvatar: selectedAvatar ?? this.selectedAvatar,
+      preferences: preferences ?? this.preferences,
+      location: location ?? this.location,
+      createdAt: createdAt,
+      isActive: isActive ?? this.isActive,
+    );
+  }
+}
+
+class WorkerModel {
+  final String id;
+  final String firstName;
+  final String lastName;
+  final String selectedAvatar;
+  final List<String> services;
+  final double rating;
+  final int totalReviews;
+  final GeoPoint location;
+  final bool isAvailable;
+  final bool isVisible;
+  final Map<String, dynamic> portfolio;
+
+  WorkerModel({
+    required this.id,
+    required this.firstName,
+    required this.lastName,
+    required this.selectedAvatar,
+    required this.services,
+    required this.rating,
+    required this.totalReviews,
+    required this.location,
+    required this.isAvailable,
+    required this.isVisible,
+    required this.portfolio,
+  });
+}
+
+class ServiceModel {
+  final String id;
+  final String name;
+  final String category;
+  final String description;
+  final double basePrice;
+  final String iconPath;
+  final bool isActive;
+
+  ServiceModel({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.description,
+    required this.basePrice,
+    required this.iconPath,
+    this.isActive = true,
+  });
+}
+
+enum RequestStatus { pending, accepted, inProgress, completed, cancelled }
+
+class RequestModel {
+  final String id;
+  final String userId;
+  final String? workerId;
+  final String serviceType;
+  final String description;
+  final List<String> mediaUrls;
+  final GeoPoint location;
+  final DateTime scheduledDate;
+  final RequestStatus status;
+  final double? finalPrice;
+
+  RequestModel({
+    required this.id,
+    required this.userId,
+    required this.workerId,
+    required this.serviceType,
+    required this.description,
+    required this.mediaUrls,
+    required this.location,
+    required this.scheduledDate,
+    required this.status,
+    this.finalPrice,
+  });
+}
+
+// Utility Services
+class AvatarService {
+  static const List<String> userAvatars = [
+    for (int i = 1; i <= 20; i++) 'assets/avatars/users/avatar_user_' + i.toString() + '.svg'
+  ];
+
+  String getRandomUserAvatar() {
+    userAvatars.shuffle();
+    return userAvatars.first;
+  }
+
+  List<String> getAllUserAvatars() => userAvatars;
+}
+
+class OpenStreetMapService {
+  static const String tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  static const LatLng algerCenter = LatLng(36.737232, 3.086472);
+}
