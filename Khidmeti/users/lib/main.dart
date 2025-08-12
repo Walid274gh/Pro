@@ -382,6 +382,72 @@ class GeolocationService {
   }
 }
 
+class RequestsRepository {
+  RequestsRepository({FirebaseFirestore? firestore})
+      : _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseFirestore _firestore;
+
+  CollectionReference<Map<String, dynamic>> get _col =>
+      _firestore.collection('requests');
+
+  Future<String> createRequest({
+    required String userUid,
+    required String title,
+    required String description,
+    required String category,
+    required double latitude,
+    required double longitude,
+    List<String> mediaUrls = const <String>[],
+  }) async {
+    final String cellId = _computeCellId(latitude: latitude, longitude: longitude);
+    final DocumentReference<Map<String, dynamic>> doc = await _col.add({
+      'userUid': userUid,
+      'title': title,
+      'description': description,
+      'category': category,
+      'status': 'open',
+      'mediaUrls': mediaUrls,
+      'location': GeoPoint(latitude, longitude),
+      'cellId': cellId,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    return doc.id;
+  }
+
+  Stream<List<Map<String, dynamic>>> streamUserRequests(String userUid) {
+    return _col
+        .where('userUid', isEqualTo: userUid)
+        .orderBy('createdAt', descending: true)
+        .limit(100)
+        .snapshots()
+        .map((q) => q.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+  }
+
+  Future<void> updateRequestStatus({
+    required String requestId,
+    required String status, // open, assigned, completed, cancelled
+  }) async {
+    await _col.doc(requestId).set(
+      {
+        'status': status,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  // Simple hex grid using fixed cell size in degrees (approximate)
+  static const double _cellSizeDeg = 0.02; // ~2.2km latitude
+
+  String _computeCellId({required double latitude, required double longitude}) {
+    final int latKey = (latitude / _cellSizeDeg).floor();
+    final int lngKey = (longitude / _cellSizeDeg).floor();
+    return 'c_${latKey}_$lngKey';
+  }
+}
+
 class AppTheme {
   // Couleurs
   static const Color kPrimaryYellow = Color(0xFFFCDC73);

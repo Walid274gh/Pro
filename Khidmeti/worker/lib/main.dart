@@ -475,6 +475,59 @@ class WorkerVerificationService {
   }
 }
 
+class RequestsRepository {
+  RequestsRepository({FirebaseFirestore? firestore})
+      : _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseFirestore _firestore;
+
+  CollectionReference<Map<String, dynamic>> get _col =>
+      _firestore.collection('requests');
+
+  static const double _cellSizeDeg = 0.02;
+
+  String _computeCellId({required double latitude, required double longitude}) {
+    final int latKey = (latitude / _cellSizeDeg).floor();
+    final int lngKey = (longitude / _cellSizeDeg).floor();
+    return 'c_${latKey}_$lngKey';
+  }
+
+  Stream<List<Map<String, dynamic>>> streamNearbyOpenRequests({
+    required double latitude,
+    required double longitude,
+    int neighborRadius = 1, // number of cell rings to include
+  }) {
+    final List<String> targetCells = <String>[];
+    final int latKey = (latitude / _cellSizeDeg).floor();
+    final int lngKey = (longitude / _cellSizeDeg).floor();
+    for (int dx = -neighborRadius; dx <= neighborRadius; dx++) {
+      for (int dy = -neighborRadius; dy <= neighborRadius; dy++) {
+        targetCells.add('c_${latKey + dx}_${lngKey + dy}');
+      }
+    }
+
+    return _col
+        .where('status', isEqualTo: 'open')
+        .where('cellId', whereIn: targetCells)
+        .snapshots()
+        .map((q) => q.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+  }
+
+  Future<void> assignRequest({
+    required String requestId,
+    required String workerUid,
+  }) async {
+    await _col.doc(requestId).set(
+      {
+        'assignedWorkerUid': workerUid,
+        'status': 'assigned',
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+}
+
 class AppTheme {
   // Couleurs
   static const Color kPrimaryYellow = Color(0xFFFCDC73);
