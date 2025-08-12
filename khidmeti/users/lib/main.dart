@@ -7,6 +7,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 // Design constants (Paytone One palette)
 const Color kPrimaryYellow = Color(0xFFFCDC73);
@@ -232,13 +234,32 @@ class RequestModel {
 
 // ---------- Services (stubs) ----------
 class AuthService implements AuthenticationService {
+  final _auth = FirebaseAuth.instance;
+
   @override
   Future<UserModel?> signInWithEmail(String email, String password) async {
-    return null; // TODO: integrate FirebaseAuth
+    if (!kUseFirebase) return UserModel(
+      id: 'local-dev', name: 'Local Dev', email: email, selectedAvatar: AvatarService().getRandomUserAvatar(), preferences: const {
+        'primaryColor': '#FCDC73', 'accentColor': '#E76268'
+      }, createdAt: DateTime.now());
+    final cred = await _auth.signInWithEmailAndPassword(email: email, password: password);
+    final user = cred.user;
+    if (user == null) return null;
+    return UserModel(
+      id: user.uid,
+      name: user.displayName ?? email.split('@').first,
+      email: user.email ?? email,
+      selectedAvatar: AvatarService().getRandomUserAvatar(),
+      preferences: const {'primaryColor': '#FCDC73', 'accentColor': '#E76268'},
+      createdAt: DateTime.now(),
+    );
   }
 
   @override
-  Future<void> signOut() async {}
+  Future<void> signOut() async {
+    if (!kUseFirebase) return;
+    await _auth.signOut();
+  }
 }
 
 class FirestoreService implements DatabaseService, Readable, Writable, Deletable {
@@ -518,7 +539,11 @@ class MapMarkerWidget extends StatelessWidget {
 }
 
 // ---------- Screens ----------
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (kUseFirebase) {
+    await Firebase.initializeApp();
+  }
   runApp(const KhidmetiApp());
 }
 

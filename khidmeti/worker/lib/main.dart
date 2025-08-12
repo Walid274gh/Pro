@@ -7,6 +7,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 // Design constants (Professional emphasis)
 const Color kPrimaryYellow = Color(0xFFFCDC73);
@@ -177,11 +179,38 @@ class JobRequestModel {
 
 // Services (stubs)
 class AuthService implements AuthenticationService {
-  @override
-  Future<WorkerUserModel?> signInWithEmail(String email, String password) async => null;
+  final _auth = FirebaseAuth.instance;
 
   @override
-  Future<void> signOut() async {}
+  Future<WorkerUserModel?> signInWithEmail(String email, String password) async {
+    if (!kUseFirebase) return WorkerUserModel(
+      id: 'local-worker',
+      name: 'Local Pro',
+      selectedAvatar: AvatarService().getRandomWorkerAvatar(),
+      businessStyle: const {'primaryColor': '#193948', 'accentColor': '#4FADCD'},
+      subscriptionStatus: 'trial',
+      visibilityOnMap: false,
+      verificationStatus: 'pending',
+    );
+    final cred = await _auth.signInWithEmailAndPassword(email: email, password: password);
+    final user = cred.user;
+    if (user == null) return null;
+    return WorkerUserModel(
+      id: user.uid,
+      name: user.displayName ?? email.split('@').first,
+      selectedAvatar: AvatarService().getRandomWorkerAvatar(),
+      businessStyle: const {'primaryColor': '#193948', 'accentColor': '#4FADCD'},
+      subscriptionStatus: 'trial',
+      visibilityOnMap: false,
+      verificationStatus: 'pending',
+    );
+  }
+
+  @override
+  Future<void> signOut() async {
+    if (!kUseFirebase) return;
+    await _auth.signOut();
+  }
 }
 
 class FirestoreService implements DatabaseService, Readable, Writable, Deletable {
@@ -413,7 +442,11 @@ class LoadingSpinner extends StatelessWidget {
 }
 
 // Screens
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (kUseFirebase) {
+    await Firebase.initializeApp();
+  }
   runApp(const KhidmetiWorkerApp());
 }
 
