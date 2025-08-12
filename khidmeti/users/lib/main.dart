@@ -123,8 +123,8 @@ class AppRoot extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider(FirebaseAuth.instance, FirebaseFirestore.instance)..initialize()),
-        ChangeNotifierProvider(create: (_) => MapProvider(FirebaseFirestore.instance)..initialize()),
         ChangeNotifierProvider(create: (_) => RequestProvider(FirebaseFirestore.instance)),
+        ChangeNotifierProvider(create: (_) => _MapViewModel(FirebaseFirestore.instance)),
       ],
       child: const KhidmetiApp(),
     );
@@ -799,11 +799,21 @@ class MapScreen extends StatelessWidget {
         children: [
           const ModernHeader(title: 'Carte'),
           Expanded(
-            child: FlutterMap(
-              options: const MapOptions(initialCenter: initialCenter, initialZoom: 12),
-              children: const [
-                TileLayer(urlTemplate: tileUrl, userAgentPackageName: 'khidmeti.users'),
-              ],
+            child: Consumer<_MapViewModel>(
+              builder: (context, vm, _) {
+                return FlutterMap(
+                  options: MapOptions(
+                    initialCenter: vm.center ?? initialCenter,
+                    initialZoom: 12,
+                  ),
+                  children: [
+                    const TileLayer(urlTemplate: tileUrl, userAgentPackageName: 'khidmeti.users'),
+                    if (vm.currentMarker != null) MarkerLayer(markers: [vm.currentMarker!]),
+                    if (vm.workerMarkers.isNotEmpty) MarkerLayer(markers: vm.workerMarkers),
+                    if (vm.routePolyline != null) PolylineLayer(polylines: [vm.routePolyline!]),
+                  ],
+                );
+              },
             ),
           ),
         ],
@@ -811,6 +821,58 @@ class MapScreen extends StatelessWidget {
     );
   }
 }
+
+class _MapViewModel extends ChangeNotifier {
+  final FirebaseFirestore _firestore;
+  final OpenStreetMapService _osm = OpenStreetMapService();
+  LatLng? center;
+  Marker? currentMarker;
+  List<Marker> workerMarkers = [];
+  Polyline? routePolyline;
+
+  _MapViewModel(this._firestore) {
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      final pos = await Geolocator.getCurrentPosition();
+      center = LatLng(pos.latitude, pos.longitude);
+      currentMarker = Marker(
+        point: center!,
+        width: 36,
+        height: 36,
+        child: const Icon(Icons.my_location, color: kPrimaryRed),
+      );
+      notifyListeners();
+    } catch (_) {}
+
+    _firestore
+        .collection('workers')
+        .where('isVisible', isEqualTo: true)
+        .snapshots()
+        .listen((snap) {
+      final workers = snap.docs.map((d) => WorkerModel.fromDoc(d)).toList();
+      workerMarkers = _osm.buildWorkerMarkers(workers);
+      notifyListeners();
+    });
+  }
+
+  Future<void> drawRoute(LatLng end, {String? orsKey}) async {
+    if (center == null) return;
+    List<LatLng> pts = [];
+    if (orsKey != null && orsKey.isNotEmpty) {
+      pts = await _osm.calculateRoute(center!, end, orsApiKey: orsKey);
+    } else {
+      pts = [center!, end];
+    }
+    routePolyline = Polyline(points: pts, strokeWidth: 4, color: kPrimaryDark);
+    notifyListeners();
+  }
+}
+
+// wire a provider for MapScreen
+// At AppRoot, add ChangeNotifierProvider for _MapViewModel
 
 // Data Models
 class UserModel {
