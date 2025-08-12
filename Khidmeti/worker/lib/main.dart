@@ -63,7 +63,7 @@ class _WorkersAppShellState extends State<WorkersAppShell> {
 
   List<Widget> get _pages => <Widget>[
         const WorkersHomeOnline(),
-        _buildPage('Recherche', 'Demandes proches publiées'),
+        const WorkersNearbyRequestsList(),
         _buildPage('Historique', 'Travaux réalisés'),
         _buildPage('Paramètres', 'Abonnement, langue, déconnexion'),
       ];
@@ -762,6 +762,174 @@ class _WorkersHomeOnlineState extends State<WorkersHomeOnline> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class WorkersNearbyRequestsList extends StatefulWidget {
+  const WorkersNearbyRequestsList({super.key});
+
+  @override
+  State<WorkersNearbyRequestsList> createState() => _WorkersNearbyRequestsListState();
+}
+
+class _WorkersNearbyRequestsListState extends State<WorkersNearbyRequestsList> {
+  final AuthService _auth = AuthService();
+  final GeolocationService _geo = const GeolocationService();
+  final RequestsRepository _requests = RequestsRepository();
+
+  Position? _pos;
+  Stream<List<Map<String, dynamic>>>? _stream;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      await _geo.ensurePermission();
+      final pos = await _geo.getCurrentPosition();
+      setState(() {
+        _pos = pos;
+        _stream = _requests.streamNearbyOpenRequests(
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+        );
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _acceptRequest(Map<String, dynamic> req) async {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez vous connecter.')),
+      );
+      return;
+    }
+    final String id = (req['id'] ?? '') as String;
+    if (id.isEmpty) return;
+    try {
+      await _requests.assignRequest(requestId: id, workerUid: user.uid);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Demande acceptée.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: $e')),
+      );
+    }
+  }
+
+  double _haversineKm(double lat1, double lon1, double lat2, double lon2) {
+    const double r = 6371.0;
+    final double dLat = _degToRad(lat2 - lat1);
+    final double dLon = _degToRad(lon2 - lon1);
+    final double a =
+        (sin(dLat / 2) * sin(dLat / 2)) +
+            cos(_degToRad(lat1)) *
+                cos(_degToRad(lat2)) *
+                (sin(dLon / 2) * sin(dLon / 2));
+    final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return r * c;
+  }
+
+  double _degToRad(double deg) => deg * (pi / 180.0);
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+        child: Text('Erreur: $_error', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+      );
+    }
+    if (_stream == null || _pos == null) {
+      return Center(child: Text('Position indisponible', style: AppTheme.kBodyStyle));
+    }
+
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Demandes proches')),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _stream,
+        builder: (context, snapshot) {
+          final items = snapshot.data ?? const <Map<String, dynamic>>[];
+          if (items.isEmpty) {
+            return Center(child: Text('Aucune demande ouverte à proximité', style: AppTheme.kBodyStyle));
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final m = items[index];
+              final String title = (m['title'] ?? 'Demande').toString();
+              final String description = (m['description'] ?? '—').toString();
+              final String category = (m['category'] ?? '—').toString();
+              final GeoPoint? gp = m['location'] as GeoPoint?;
+              final double distanceKm = gp == null
+                  ? 99999.0
+                  : _haversineKm(_pos!.latitude, _pos!.longitude, gp.latitude, gp.longitude);
+
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(child: Text(title, style: AppTheme.kSubheadingStyle)),
+                          Text('${distanceKm.toStringAsFixed(1)} km', style: AppTheme.kBodyStyle),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(description, style: AppTheme.kBodyStyle),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        children: [
+                          Chip(
+                            label: Text(category),
+                            backgroundColor: AppTheme.kButton3DLight,
+                            side: const BorderSide(color: AppTheme.kPrimaryYellow),
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _acceptRequest(m),
+                          icon: const Icon(Icons.check_circle_rounded),
+                          label: const Text('Accepter'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
