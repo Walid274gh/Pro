@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "477958508359",
+    "project_id": "khidmeti-6e5a3",
+    "storage_bucket": "khidmeti-6e5a3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:477958508359:android:c323bf3830be33fa644662",
+        "android_client_info": {
+          "package_name": "com.khidmeti"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCa-ygTu0iDLsdMRZSk-VTpv-D-OATEiZg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
