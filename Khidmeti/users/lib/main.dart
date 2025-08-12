@@ -1326,6 +1326,63 @@ class WorkerProfileScreen extends StatelessWidget {
   }
 }
 
+class UsersSettingsScreen extends StatefulWidget {
+  const UsersSettingsScreen({super.key});
+
+  @override
+  State<UsersSettingsScreen> createState() => _UsersSettingsScreenState();
+}
+
+class _UsersSettingsScreenState extends State<UsersSettingsScreen> {
+  final AuthService _auth = AuthService();
+  String _language = 'fr';
+
+  Future<void> _signOut() async {
+    await _auth.signOut();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Déconnecté.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Paramètres')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text('Langue', style: AppTheme.kSubheadingStyle),
+          const SizedBox(height: 8),
+          DropdownButton<String>(
+            value: _language,
+            items: const [
+              DropdownMenuItem(value: 'fr', child: Text('Français')),
+              DropdownMenuItem(value: 'en', child: Text('English')),
+              DropdownMenuItem(value: 'ar', child: Text('العربية')),
+            ],
+            onChanged: (v) => setState(() => _language = v ?? _language),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: _signOut,
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('Déconnexion'),
+          ),
+          const SizedBox(height: 24),
+          Text('À propos', style: AppTheme.kSubheadingStyle),
+          const SizedBox(height: 8),
+          Text(
+            'KHIDMETI Users — Trouvez rapidement des travailleurs de confiance. Version 1.0.0',
+            style: AppTheme.kBodyStyle,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class NotificationsTrigger {
   NotificationsTrigger({FirebaseFunctions? functions})
       : _functions = functions ?? FirebaseFunctions.instance;
