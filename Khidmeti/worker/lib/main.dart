@@ -767,7 +767,7 @@ class WorkersNearbyRequestsList extends StatefulWidget {
 class _WorkersNearbyRequestsListState extends State<WorkersNearbyRequestsList> {
   final AuthService _auth = AuthService();
   final GeolocationService _geo = const GeolocationService();
-  final RequestsRepository _requests = RequestsRepository();
+  final WorkOrderOrchestrator _orchestrator = WorkOrderOrchestrator();
 
   Position? _pos;
   Stream<List<Map<String, dynamic>>>? _stream;
@@ -786,7 +786,7 @@ class _WorkersNearbyRequestsListState extends State<WorkersNearbyRequestsList> {
       final pos = await _geo.getCurrentPosition();
       setState(() {
         _pos = pos;
-        _stream = _requests.streamNearbyOpenRequests(
+        _stream = RequestsRepository().streamNearbyOpenRequests(
           latitude: pos.latitude,
           longitude: pos.longitude,
         );
@@ -812,7 +812,7 @@ class _WorkersNearbyRequestsListState extends State<WorkersNearbyRequestsList> {
     final String id = (req['id'] ?? '') as String;
     if (id.isEmpty) return;
     try {
-      await _requests.assignRequest(requestId: id, workerUid: user.uid);
+      await _orchestrator.assignRequestAndNotify(requestId: id, workerUid: user.uid);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Demande acceptée.')),
@@ -1596,7 +1596,7 @@ class WorkersAssignedScreen extends StatefulWidget {
 
 class _WorkersAssignedScreenState extends State<WorkersAssignedScreen> {
   final AuthService _auth = AuthService();
-  final WorkOrdersRepository _orders = WorkOrdersRepository();
+  final WorkOrderOrchestrator _orchestrator = WorkOrderOrchestrator();
 
   bool _submitting = false;
 
@@ -1613,7 +1613,7 @@ class _WorkersAssignedScreenState extends State<WorkersAssignedScreen> {
     if (id.isEmpty) return;
     setState(() => _submitting = true);
     try {
-      await _orders.completeRequest(requestId: id, workerUid: user.uid);
+      await _orchestrator.completeRequestAndNotify(requestId: id, workerUid: user.uid);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Demande marquée comme terminée.')),
@@ -1644,7 +1644,7 @@ class _WorkersAssignedScreenState extends State<WorkersAssignedScreen> {
       backgroundColor: AppTheme.kBackgroundColor,
       appBar: AppBar(title: const Text('Demandes assignées')),
       body: StreamBuilder<List<Map<String, dynamic>>>(
-        stream: _orders.streamAssignedToWorker(user.uid),
+        stream: WorkOrdersRepository().streamAssignedToWorker(user.uid),
         builder: (context, snapshot) {
           final items = snapshot.data ?? const <Map<String, dynamic>>[];
           if (items.isEmpty) {
