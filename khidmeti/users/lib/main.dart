@@ -714,6 +714,7 @@ class WorkersRepository {
         .collection('workers')
         .where('subscriptionStatus', isEqualTo: 'active')
         .where('visibilityOnMap', isEqualTo: true)
+        .where('verificationStatus', isEqualTo: 'verified')
         .snapshots()
         .map((snap) => snap.docs.map((d) => WorkerModel.fromMap(d.id, d.data())).toList(growable: false));
   }
