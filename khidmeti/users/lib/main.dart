@@ -5,6 +5,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 // Flags
 const bool USE_PAYTONE_COLORS = true;
@@ -878,4 +882,119 @@ class AvatarService {
 class OpenStreetMapService {
   static const String tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
   static const LatLng algerCenter = LatLng(36.737232, 3.086472);
+}
+
+// SOLID service abstractions
+abstract class AuthenticationService {
+  Future<UserModel?> signInWithEmail(String email, String password);
+  Future<void> signOut();
+}
+
+abstract class DatabaseService {
+  Future<void> createDocument(String collection, String id, Map<String, dynamic> data);
+  Future<Map<String, dynamic>?> getDocument(String collection, String id);
+}
+
+abstract class LocationService {
+  Future<Position> getCurrentLocation();
+  Stream<Position> getLocationStream();
+}
+
+abstract class NotificationSender {
+  Future<void> sendNotification(String userId, String message);
+}
+
+abstract class Readable {
+  Future<T?> read<T>(String id);
+}
+
+abstract class Writable {
+  Future<void> write<T>(String id, T data);
+}
+
+// Implementations (minimal)
+class FirestoreDatabaseService implements DatabaseService, Readable, Writable {
+  final FirebaseFirestore _firestore;
+  FirestoreDatabaseService(this._firestore);
+
+  @override
+  Future<void> createDocument(String collection, String id, Map<String, dynamic> data) async {
+    await _firestore.collection(collection).doc(id).set(data);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getDocument(String collection, String id) async {
+    final doc = await _firestore.collection(collection).doc(id).get();
+    return doc.data();
+  }
+
+  @override
+  Future<T?> read<T>(String id) async {
+    return null;
+  }
+
+  @override
+  Future<void> write<T>(String id, T data) async {}
+}
+
+class AuthService implements AuthenticationService {
+  final FirebaseAuth _auth;
+  final DatabaseService _db;
+  AuthService(this._auth, this._db);
+
+  @override
+  Future<UserModel?> signInWithEmail(String email, String password) async {
+    final cred = await _auth.signInWithEmailAndPassword(email: email, password: password);
+    final uid = cred.user?.uid;
+    if (uid == null) return null;
+    final data = await _db.getDocument('users', uid);
+    if (data == null) return null;
+    return UserModel.fromMap({...data, 'id': uid});
+  }
+
+  @override
+  Future<void> signOut() => _auth.signOut();
+}
+
+class OpenStreetMapLocationService implements LocationService {
+  @override
+  Future<Position> getCurrentLocation() async {
+    LocationPermission perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+      perm = await Geolocator.requestPermission();
+    }
+    return Geolocator.getCurrentPosition();
+  }
+
+  @override
+  Stream<Position> getLocationStream() => Geolocator.getPositionStream();
+}
+
+class FCMNotificationService implements NotificationSender {
+  final FirebaseMessaging _messaging;
+  final FlutterLocalNotificationsPlugin _local;
+  FCMNotificationService(this._messaging, this._local);
+
+  @override
+  Future<void> sendNotification(String userId, String message) async {
+    // Placeholder: would use FCM topics or tokens; local display for demo
+    await _local.show(
+      0,
+      'Khidmeti',
+      message,
+      const NotificationDetails(
+        android: AndroidNotificationDetails('khidmeti', 'Khidmeti', importance: Importance.high, priority: Priority.high),
+      ),
+    );
+  }
+}
+
+class ChatService {
+  final DatabaseService _db;
+  final NotificationSender _notifier;
+  ChatService(this._db, this._notifier);
+
+  Future<void> sendMessage(String chatId, Map<String, dynamic> message) async {
+    await _db.createDocument('chats/$chatId/messages', DateTime.now().millisecondsSinceEpoch.toString(), message);
+  }
 }
