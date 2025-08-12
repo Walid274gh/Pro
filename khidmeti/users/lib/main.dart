@@ -13,6 +13,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:geocoding/geocoding.dart' as geocoding;
+import 'package:image_picker/image_picker.dart';
 
 // Flags
 const bool USE_PAYTONE_COLORS = true;
@@ -1327,5 +1329,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ],
     );
+  }
+}
+
+Future<String> reverseGeocodeText(double lat, double lng) async {
+  try {
+    final placemarks = await geocoding.placemarkFromCoordinates(lat, lng);
+    if (placemarks.isEmpty) return 'Adresse inconnue';
+    final p = placemarks.first;
+    return [p.street, p.locality].where((e) => (e ?? '').isNotEmpty).join(', ');
+  } catch (_) {
+    return 'Adresse inconnue';
+  }
+}
+
+Future<String?> pickAndUploadImage({required String storagePath}) async {
+  try {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked == null) return null;
+    final file = File(picked.path);
+    final ref = FirebaseStorage.instance.ref().child('$storagePath/${DateTime.now().millisecondsSinceEpoch}.jpg');
+    await ref.putFile(file, SettableMetadata(contentType: 'image/jpeg'));
+    return await ref.getDownloadURL();
+  } catch (_) {
+    return null;
   }
 }
