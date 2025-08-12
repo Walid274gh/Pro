@@ -1156,30 +1156,189 @@ class RequestsScreen extends StatelessWidget {
   const RequestsScreen({super.key});
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const ModernHeader(title: 'Mes demandes'),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _RequestTile(
-                title: 'Nettoyage',
-                status: 'En cours',
-                color: kPrimaryTeal,
-                date: 'Aujourd\'hui 14:00',
-              ),
-              _RequestTile(
-                title: 'Plomberie',
-                status: 'En attente',
-                color: kPrimaryYellow,
-                date: 'Demain 09:30',
+    return Scaffold(
+      backgroundColor: kBackgroundColor,
+      body: Column(
+        children: [
+          const ModernHeader(title: 'Mes demandes'),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: const [
+                _RequestTile(
+                  title: 'Nettoyage',
+                  status: 'En cours',
+                  color: kPrimaryTeal,
+                  date: 'Aujourd\'hui 14:00',
+                ),
+                _RequestTile(
+                  title: 'Plomberie',
+                  status: 'En attente',
+                  color: kPrimaryYellow,
+                  date: 'Demain 09:30',
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: kPrimaryDark,
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text('Créer', style: TextStyle(color: Colors.white)),
+        onPressed: () => _openCreateRequestSheet(context),
+      ),
+    );
+  }
+
+  void _openCreateRequestSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const _CreateRequestSheet(),
+    );
+  }
+}
+
+class _CreateRequestSheet extends StatefulWidget {
+  const _CreateRequestSheet();
+  @override
+  State<_CreateRequestSheet> createState() => _CreateRequestSheetState();
+}
+
+class _CreateRequestSheetState extends State<_CreateRequestSheet> {
+  final TextEditingController _desc = TextEditingController();
+  String? _imageUrl;
+  String? _address;
+  bool _loading = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.8,
+      minChildSize: 0.6,
+      maxChildSize: 0.95,
+      builder: (context, scroll) {
+        return Container(
+          decoration: BoxDecoration(
+            color: kSurfaceColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            boxShadow: [
+              BoxShadow(
+                color: kPrimaryDark.withOpacity(0.15),
+                blurRadius: 16,
+                offset: const Offset(0, -4),
               ),
             ],
           ),
-        ),
-      ],
+          padding: const EdgeInsets.all(16),
+          child: SingleChildScrollView(
+            controller: scroll,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: kSubtitleColor.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text('Créer une demande', style: kHeadingStyle.copyWith(fontSize: 20)),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _desc,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Description',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: BubbleButton(
+                        text: _imageUrl == null ? 'Ajouter photo' : 'Photo ajoutée',
+                        onPressed: _pickImage,
+                        primaryColor: kPrimaryTeal,
+                        height: 48,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: BubbleButton(
+                        text: _address ?? 'Localiser',
+                        onPressed: _getLocation,
+                        primaryColor: kPrimaryYellow,
+                        textColor: kPrimaryDark,
+                        height: 48,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                BubbleButton(
+                  text: _loading ? 'Envoi...' : 'Envoyer la demande',
+                  onPressed: _loading ? (){} : _submit,
+                  primaryColor: kPrimaryDark,
+                  width: double.infinity,
+                  height: 56,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
+  }
+
+  Future<void> _pickImage() async {
+    final url = await pickAndUploadImage(storagePath: 'requests');
+    if (url != null) setState(() => _imageUrl = url);
+  }
+
+  Future<void> _getLocation() async {
+    setState(() => _address = 'Localisation...');
+    try {
+      final pos = await Geolocator.getCurrentPosition();
+      final txt = await reverseGeocodeText(pos.latitude, pos.longitude);
+      setState(() => _address = txt);
+    } catch (_) {
+      setState(() => _address = 'Adresse inconnue');
+    }
+  }
+
+  Future<void> _submit() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez vous connecter')));
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final id = DateTime.now().millisecondsSinceEpoch.toString();
+      await FirebaseFirestore.instance.collection('requests').doc(id).set({
+        'userId': user.uid,
+        'description': _desc.text.trim(),
+        'mediaUrls': _imageUrl == null ? [] : [_imageUrl],
+        'createdAt': DateTime.now().millisecondsSinceEpoch,
+      });
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Demande envoyée')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erreur lors de l\'envoi')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 }
 
