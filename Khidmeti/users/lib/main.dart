@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -160,6 +161,103 @@ class AuthService {
       smsCode: smsCode,
     );
     return _auth.signInWithCredential(credential);
+  }
+}
+
+class FirestoreProfileRepository {
+  FirestoreProfileRepository({FirebaseFirestore? firestore})
+      : _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseFirestore _firestore;
+
+  CollectionReference<Map<String, dynamic>> get _profilesCol =>
+      _firestore.collection('profiles');
+
+  Future<void> upsertProfile({
+    required String uid,
+    required Map<String, dynamic> data,
+  }) async {
+    final now = FieldValue.serverTimestamp();
+    final DocumentReference<Map<String, dynamic>> doc = _profilesCol.doc(uid);
+    await doc.set(
+      <String, dynamic>{
+        'updatedAt': now,
+        ...data,
+      },
+      SetOptions(merge: true),
+    );
+    await doc.set(
+      <String, dynamic>{
+        'createdAt': now,
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<Map<String, dynamic>?> getProfile(String uid) async {
+    final snap = await _profilesCol.doc(uid).get();
+    if (!snap.exists) return null;
+    return snap.data();
+  }
+
+  Stream<Map<String, dynamic>?> streamProfile(String uid) {
+    return _profilesCol.doc(uid).snapshots().map((d) => d.data());
+  }
+
+  Future<void> addFcmToken({required String uid, required String token}) async {
+    await _profilesCol.doc(uid).set(
+      {
+        'fcmTokens': FieldValue.arrayUnion([token]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> setOnlineStatus({required String uid, required bool isOnline}) async {
+    await _profilesCol.doc(uid).set(
+      {
+        'isOnline': isOnline,
+        'lastSeenAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> updateLocation({
+    required String uid,
+    required double latitude,
+    required double longitude,
+    double? accuracyMeters,
+  }) async {
+    await _profilesCol.doc(uid).set(
+      {
+        'lastKnownLocation': GeoPoint(latitude, longitude),
+        if (accuracyMeters != null) 'locationAccuracyM': accuracyMeters,
+        'locationUpdatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> ensureUniqueIdCardHash({
+    required String uid,
+    required String idCardHash,
+  }) async {
+    final QuerySnapshot<Map<String, dynamic>> existing = await _profilesCol
+        .where('idCardHash', isEqualTo: idCardHash)
+        .limit(1)
+        .get();
+    if (existing.docs.isNotEmpty && existing.docs.first.id != uid) {
+      throw StateError('ID card already used by another account');
+    }
+    await _profilesCol.doc(uid).set(
+      {
+        'idCardHash': idCardHash,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
   }
 }
 
