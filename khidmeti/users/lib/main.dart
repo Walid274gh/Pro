@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 // Flags
 const bool USE_PAYTONE_COLORS = true;
@@ -186,6 +187,41 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isLogin = true;
   bool _loading = false;
 
+  Future<void> _handleAuth() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      final auth = AuthService(FirebaseAuth.instance, FirestoreDatabaseService(FirebaseFirestore.instance));
+      if (_isLogin) {
+        await auth.signInWithEmail(_email.text.trim(), _password.text);
+      } else {
+        final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(email: _email.text.trim(), password: _password.text);
+        final uid = cred.user!.uid;
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          'firstName': 'User',
+          'lastName': 'Khidmeti',
+          'email': _email.text.trim(),
+          'selectedAvatar': AvatarService().getRandomUserAvatar(),
+          'preferences': {
+            'primaryColor': '#FCDC73',
+            'accentColor': '#E76268',
+          },
+          'createdAt': DateTime.now().millisecondsSinceEpoch,
+          'isActive': true,
+        });
+      }
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, '/home');
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Erreur d\'authentification')),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -226,7 +262,7 @@ class _AuthScreenState extends State<AuthScreen> {
               const SizedBox(height: 32),
               BubbleButton(
                 text: _isLogin ? 'Se connecter' : 'S\'inscrire',
-                onPressed: () {},
+                onPressed: _handleAuth,
                 primaryColor: kPrimaryDark,
                 width: double.infinity,
                 height: 56,
@@ -1212,7 +1248,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   padding: const EdgeInsets.all(8),
                   child: Center(
-                    child: Text('SVG', style: kBodyStyle.copyWith(color: kPrimaryDark)),
+                    child: SvgPicture.asset(path, width: 44, height: 44),
                   ),
                 ),
               );
