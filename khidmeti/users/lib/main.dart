@@ -10,6 +10,9 @@ import 'package:geolocator/geolocator.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'dart:io';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:http/http.dart' as http;
 
 // Flags
 const bool USE_PAYTONE_COLORS = true;
@@ -69,6 +72,12 @@ Future<void> main() async {
   try {
     await Firebase.initializeApp();
   } catch (_) {}
+  // Init local notifications channel (basic)
+  final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+  const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+  await flutterLocalNotificationsPlugin.initialize(const InitializationSettings(android: androidInit));
+  // Request FCM permission (no-op on Android <13)
+  try { await FirebaseMessaging.instance.requestPermission(); } catch (_) {}
   runApp(const KhidmetiApp());
 }
 
@@ -923,6 +932,35 @@ class AvatarService {
 class OpenStreetMapService {
   static const String tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
   static const LatLng algerCenter = LatLng(36.737232, 3.086472);
+
+  List<Marker> buildWorkerMarkers(List<WorkerModel> workers) {
+    return workers.map((w) {
+      return Marker(
+        point: LatLng(w.location.latitude, w.location.longitude),
+        width: 40,
+        height: 40,
+        child: Container(
+          decoration: BoxDecoration(
+            color: kPrimaryTeal,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(color: kPrimaryDark.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 4)),
+            ],
+          ),
+          child: const Icon(Icons.person_pin_circle, color: Colors.white),
+        ),
+      );
+    }).toList();
+  }
+
+  Future<List<LatLng>> calculateRoute(LatLng start, LatLng end, {required String orsApiKey}) async {
+    final url = Uri.parse('https://api.openrouteservice.org/v2/directions/driving-car?api_key=$orsApiKey&start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}');
+    final resp = await http.get(url);
+    if (resp.statusCode != 200) return [];
+    final data = resp.body;
+    // Minimal parsing stub; in real impl, decode JSON
+    return [start, end];
+  }
 }
 
 // SOLID service abstractions
