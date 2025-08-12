@@ -901,6 +901,58 @@ class WorkerSyncService {
   Stream<List<WorkerModel>> get visibleWorkersStream => repository.activeWorkers();
 }
 
+class MyRequestsScreen extends StatelessWidget {
+  const MyRequestsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = kUseFirebase ? (FirebaseAuth.instance.currentUser?.uid ?? 'local-dev') : 'local-dev';
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const ModernHeader(title: 'Mes demandes'),
+            Expanded(
+              child: kUseFirebase
+                  ? StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: FirebaseFirestore.instance
+                          .collection('requests')
+                          .where('userId', isEqualTo: uid)
+                          .orderBy('createdAt', descending: true)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        final docs = snapshot.data?.docs ?? [];
+                        if (docs.isEmpty) return const Center(child: Text('Aucune demande', style: kBodyStyle));
+                        return ListView.separated(
+                          padding: const EdgeInsets.all(kPadding),
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemCount: docs.length,
+                          itemBuilder: (context, index) {
+                            final d = docs[index];
+                            final data = d.data();
+                            return PrimaryCard(
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.work, color: kPrimaryYellow),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text('Service: ${data['serviceId']} — Statut: ${data['status']}', style: kBodyStyle.copyWith(color: kTextColor))),
+                                ],
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    )
+                  : const Center(child: Text('Firebase désactivé', style: kBodyStyle)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class HomeScreen extends StatelessWidget {
   final String? selectedAvatar;
   const HomeScreen({super.key, this.selectedAvatar});
@@ -1031,6 +1083,17 @@ class HomeScreen extends StatelessWidget {
                         );
                       },
                     ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            PrimaryCard(
+              child: Row(
+                children: [
+                  Expanded(child: Text('Mes demandes', style: kSubheadingStyle)),
+                  BubbleButton(label: 'Ouvrir', icon: Icons.inbox, onPressed: () {
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MyRequestsScreen()));
+                  }),
                 ],
               ),
             ),
