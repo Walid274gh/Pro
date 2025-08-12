@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fb;
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -86,6 +87,79 @@ class FirebaseBootstrap {
 
     final String? token = await FirebaseMessaging.instance.getToken();
     debugPrint('FCM token (Workers): $token');
+  }
+}
+
+class AuthService {
+  AuthService({fb.FirebaseAuth? auth}) : _auth = auth ?? fb.FirebaseAuth.instance;
+
+  final fb.FirebaseAuth _auth;
+
+  Stream<fb.User?> authStateChanges() => _auth.authStateChanges();
+
+  fb.User? get currentUser => _auth.currentUser;
+
+  Future<fb.UserCredential> signUpWithEmailAndPassword({
+    required String email,
+    required String password,
+    required String firstName,
+    required String lastName,
+    String? phoneNumber,
+  }) async {
+    final fb.UserCredential cred = await _auth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+    await cred.user?.updateDisplayName('$firstName $lastName');
+    if (phoneNumber != null && phoneNumber.isNotEmpty) {
+      // Optionally store phone in user profile via custom claims or Firestore later
+    }
+    return cred;
+  }
+
+  Future<fb.UserCredential> signInWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) {
+    return _auth.signInWithEmailAndPassword(email: email, password: password);
+  }
+
+  Future<void> sendEmailVerification() async {
+    final fb.User? user = _auth.currentUser;
+    if (user != null && !user.emailVerified) {
+      await user.sendEmailVerification();
+    }
+  }
+
+  Future<void> signOut() => _auth.signOut();
+
+  Future<void> startPhoneNumberVerification({
+    required String phoneNumber,
+    required void Function(String verificationId) onCodeSent,
+    required void Function(String verificationId, int? forceResendingToken) onTimeout,
+    required void Function(fb.PhoneAuthCredential credential) onVerified,
+    required void Function(fb.FirebaseAuthException error) onFailed,
+    int? forceResendingToken,
+  }) async {
+    await _auth.verifyPhoneNumber(
+      phoneNumber: phoneNumber,
+      verificationCompleted: onVerified,
+      verificationFailed: onFailed,
+      codeSent: (String verificationId, int? resendToken) => onCodeSent(verificationId),
+      codeAutoRetrievalTimeout: (String verificationId) => onTimeout(verificationId, forceResendingToken),
+      forceResendingToken: forceResendingToken,
+    );
+  }
+
+  Future<fb.UserCredential> confirmSmsCode({
+    required String verificationId,
+    required String smsCode,
+  }) async {
+    final fb.PhoneAuthCredential credential = fb.PhoneAuthProvider.credential(
+      verificationId: verificationId,
+      smsCode: smsCode,
+    );
+    return _auth.signInWithCredential(credential);
   }
 }
 
