@@ -129,28 +129,101 @@ class _WorkerSplashState extends State<WorkerSplash>
   }
 }
 
-class WorkerHome extends StatelessWidget {
+class WorkerHome extends StatefulWidget {
   const WorkerHome({super.key});
+
+  @override
+  State<WorkerHome> createState() => _WorkerHomeState();
+}
+
+class _WorkerHomeState extends State<WorkerHome> {
+  int _index = 0;
+
+  final List<Widget> _tabs = const [
+    _DashboardView(),
+    MapScreen(),
+    _Placeholder('Demandes'),
+    _Placeholder('Profil'),
+  ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kBackgroundColor,
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: const [
-            _Header(),
-            SizedBox(height: 16),
-            _StatsRow(),
-            SizedBox(height: 16),
-            _SectionTitle('Demandes récentes'),
-            SizedBox(height: 8),
-            _RequestCard(),
+      body: _tabs[_index],
+      bottomNavigationBar: Container(
+        margin: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: kSurfaceColor,
+          borderRadius: BorderRadius.circular(25),
+          boxShadow: [
+            BoxShadow(
+              color: kPrimaryDark.withOpacity(0.1),
+              offset: const Offset(0, 4),
+              blurRadius: 20,
+            ),
+          ],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _index,
+          onTap: (i) => setState(() => _index = i),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          type: BottomNavigationBarType.fixed,
+          selectedItemColor: kPrimaryDark,
+          unselectedItemColor: kSubtitleColor,
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
+            BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Carte'),
+            BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'Demandes'),
+            BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
           ],
         ),
       ),
     );
+  }
+}
+
+class _DashboardView extends StatelessWidget {
+  const _DashboardView();
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: const [
+        ModernHeader(title: 'Tableau de bord'),
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: _DashboardContent(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DashboardContent extends StatelessWidget {
+  const _DashboardContent();
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      children: const [
+        _StatsRow(),
+        SizedBox(height: 16),
+        _SectionTitle('Demandes récentes'),
+        SizedBox(height: 8),
+        _RequestCard(),
+      ],
+    );
+  }
+}
+
+class _Placeholder extends StatelessWidget {
+  final String label;
+  const _Placeholder(this.label);
+  @override
+  Widget build(BuildContext context) {
+    return Center(child: Text(label, style: kHeadingStyle));
   }
 }
 

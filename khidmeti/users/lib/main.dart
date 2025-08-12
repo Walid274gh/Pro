@@ -402,37 +402,42 @@ class _HomeView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text('Khidmeti', style: kHeadingStyle.copyWith(fontSize: 32)),
-          const SizedBox(height: 8),
-          Text('Trouvez des services près de chez vous', style: kBodyStyle),
-          const SizedBox(height: 16),
-          ModernCard(
-            title: 'Nettoyage à domicile',
-            subtitle: 'Professionnels de confiance, réservation en 2 minutes',
-            backgroundColor: kPrimaryYellow,
-            illustration: const Icon(Icons.cleaning_services, size: 80, color: kPrimaryDark),
-            onTap: () {},
+    return Column(
+      children: [
+        const ModernHeader(title: 'Accueil'),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text('Khidmeti', style: kHeadingStyle.copyWith(fontSize: 32)),
+              const SizedBox(height: 8),
+              Text('Trouvez des services près de chez vous', style: kBodyStyle),
+              const SizedBox(height: 16),
+              ModernCard(
+                title: 'Nettoyage à domicile',
+                subtitle: 'Professionnels de confiance, réservation en 2 minutes',
+                backgroundColor: kPrimaryYellow,
+                illustration: const Icon(Icons.cleaning_services, size: 80, color: kPrimaryDark),
+                onTap: () {},
+              ),
+              ModernCard(
+                title: 'Plomberie',
+                subtitle: 'Dépannage rapide et efficace',
+                backgroundColor: kPrimaryTeal,
+                illustration: const Icon(Icons.plumbing, size: 80, color: Colors.white),
+                onTap: () {},
+              ),
+              ModernCard(
+                title: 'Électricité',
+                subtitle: 'Experts certifiés',
+                backgroundColor: kPrimaryRed,
+                illustration: const Icon(Icons.electric_bolt, size: 80, color: Colors.white),
+                onTap: () {},
+              ),
+            ],
           ),
-          ModernCard(
-            title: 'Plomberie',
-            subtitle: 'Dépannage rapide et efficace',
-            backgroundColor: kPrimaryTeal,
-            illustration: const Icon(Icons.plumbing, size: 80, color: Colors.white),
-            onTap: () {},
-          ),
-          ModernCard(
-            title: 'Électricité',
-            subtitle: 'Experts certifiés',
-            backgroundColor: kPrimaryRed,
-            illustration: const Icon(Icons.electric_bolt, size: 80, color: Colors.white),
-            onTap: () {},
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
