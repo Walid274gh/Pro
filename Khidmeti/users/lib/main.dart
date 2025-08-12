@@ -448,6 +448,54 @@ class RequestsRepository {
   }
 }
 
+class PushNotificationService {
+  PushNotificationService({
+    FirebaseMessaging? messaging,
+    required FirestoreProfileRepository profileRepository,
+    required String role, // 'users'
+  })  : _messaging = messaging ?? FirebaseMessaging.instance,
+        _profileRepository = profileRepository,
+        _role = role;
+
+  final FirebaseMessaging _messaging;
+  final FirestoreProfileRepository _profileRepository;
+  final String _role;
+
+  Stream<RemoteMessage> get onMessage => FirebaseMessaging.onMessage;
+  Stream<RemoteMessage> get onMessageOpenedApp => FirebaseMessaging.onMessageOpenedApp;
+
+  Future<void> initForSignedInUser(String uid) async {
+    await _messaging.setAutoInitEnabled(true);
+    final String? token = await _messaging.getToken();
+    if (token != null) {
+      await _profileRepository.addFcmToken(uid: uid, token: token);
+    }
+    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      await _profileRepository.addFcmToken(uid: uid, token: newToken);
+    });
+  }
+
+  Future<void> subscribeToRequestTopic(String requestId) async {
+    await _messaging.subscribeToTopic('request_$requestId');
+  }
+
+  Future<void> unsubscribeFromRequestTopic(String requestId) async {
+    await _messaging.unsubscribeFromTopic('request_$requestId');
+  }
+
+  Future<void> subscribeToGeoCells(List<String> cellIds) async {
+    for (final String cell in cellIds) {
+      await _messaging.subscribeToTopic('geo_$cell');
+    }
+  }
+
+  Future<void> unsubscribeFromGeoCells(List<String> cellIds) async {
+    for (final String cell in cellIds) {
+      await _messaging.unsubscribeFromTopic('geo_$cell');
+    }
+  }
+}
+
 class AppTheme {
   // Couleurs
   static const Color kPrimaryYellow = Color(0xFFFCDC73);
