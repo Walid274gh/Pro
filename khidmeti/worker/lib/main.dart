@@ -345,6 +345,85 @@ class WorkerProfileRepository {
   }
 }
 
+class PaymentModel {
+  final String id;
+  final String workerId;
+  final double amount;
+  final String method; // baridiMob | bankCard
+  final String status; // pending | success | failed
+  final DateTime createdAt;
+
+  PaymentModel({
+    required this.id,
+    required this.workerId,
+    required this.amount,
+    required this.method,
+    required this.status,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'workerId': workerId,
+        'amount': amount,
+        'method': method,
+        'status': status,
+        'createdAt': Timestamp.fromDate(createdAt),
+      };
+}
+
+class PaymentRepository {
+  final FirebaseFirestore db;
+  PaymentRepository(this.db);
+
+  CollectionReference<Map<String, dynamic>> get _col => db.collection('payments');
+
+  Future<String> createPayment(PaymentModel payment) async {
+    if (!kUseFirebase) return 'local-payment';
+    final ref = await _col.add(payment.toMap());
+    return ref.id;
+  }
+
+  Future<void> updatePaymentStatus(String paymentId, String status) async {
+    if (!kUseFirebase) return;
+    await _col.doc(paymentId).set({'status': status}, SetOptions(merge: true));
+  }
+}
+
+class PaymentService {
+  final PaymentRepository repository;
+  final PaymentProcessor processor;
+  final WorkersAdminRepository workersAdminRepository;
+
+  PaymentService({
+    required this.repository,
+    required this.processor,
+    required this.workersAdminRepository,
+  });
+
+  Future<PaymentResult> processSubscriptionRenewal({
+    required String workerId,
+    required double amount,
+    required PaymentMethod method,
+  }) async {
+    final methodName = method == PaymentMethod.baridiMob ? 'baridiMob' : 'bankCard';
+    final payment = PaymentModel(
+      id: 'temp',
+      workerId: workerId,
+      amount: amount,
+      method: methodName,
+      status: 'pending',
+      createdAt: DateTime.now(),
+    );
+    final paymentId = await repository.createPayment(payment);
+    final result = await processor.processPayment(amount, method);
+    await repository.updatePaymentStatus(paymentId, result.isSuccess ? 'success' : 'failed');
+    if (result.isSuccess) {
+      await workersAdminRepository.setSubscriptionActive(workerId: workerId);
+    }
+    return result;
+  }
+}
+
 // Widgets
 class ModernHeader extends StatelessWidget {
   final String title;
@@ -668,7 +747,50 @@ class SubscriptionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final repo = WorkersAdminRepository(FirebaseFirestore.instance);
-    const workerId = 'demo-worker-id';
+    const amount = 1999.0; // DZD example
+    final paymentRepo = PaymentRepository(FirebaseFirestore.instance);
+
+    Future<void> _pay(PaymentMethod method) async {
+      final workerId = FirebaseAuth.instance.currentUser?.uid ?? 'demo-worker-id';
+      final processor = method == PaymentMethod.baridiMob
+          ? BaridiMobPaymentProcessor()
+          : BankCardPaymentProcessor();
+      final service = PaymentService(
+        repository: paymentRepo,
+        processor: processor,
+        workersAdminRepository: repo,
+      );
+      final result = await service.processSubscriptionRenewal(workerId: workerId, amount: amount, method: method);
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          builder: (_) => Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: kSurfaceColor,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Lottie.asset(result.isSuccess
+                      ? 'packages/shared_assets/animations/payment_success.json'
+                      : 'packages/shared_assets/animations/error_animation.json',
+                      width: 160, height: 160),
+                  const SizedBox(height: 8),
+                  Text(result.isSuccess ? 'Paiement réussi' : 'Paiement échoué', style: kSubheadingStyle),
+                  const SizedBox(height: 8),
+                  BubbleButton(label: 'Fermer', icon: Icons.check, onPressed: () => Navigator.of(context).pop()),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -682,21 +804,11 @@ class SubscriptionScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Renouvellement', style: kSubheadingStyle),
+                    Text('Renouvellement - 1999 DZD', style: kSubheadingStyle),
                     const SizedBox(height: 8),
-                    BubbleButton(label: 'Payer BaridiMob', icon: Icons.payment, onPressed: () async {
-                      await repo.setSubscriptionActive(workerId: workerId);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Abonnement activé')));
-                      }
-                    }),
+                    BubbleButton(label: 'Payer BaridiMob', icon: Icons.payment, onPressed: () => _pay(PaymentMethod.baridiMob)),
                     const SizedBox(height: 8),
-                    BubbleButton(label: 'Payer Carte', icon: Icons.credit_card, onPressed: () async {
-                      await repo.setSubscriptionActive(workerId: workerId);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Abonnement activé')));
-                      }
-                    }),
+                    BubbleButton(label: 'Payer Carte', icon: Icons.credit_card, onPressed: () => _pay(PaymentMethod.bankCard)),
                   ],
                 ),
               ),
