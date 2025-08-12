@@ -8,6 +8,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:typed_data';
 import 'dart:math';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' as ll;
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -57,7 +59,7 @@ class _UsersAppShellState extends State<UsersAppShell> {
 
   List<Widget> get _pages => <Widget>[
         _buildHomePage(),
-        _buildPage('Recherche', 'Carte des travailleurs disponibles'),
+        _buildSearchPage(),
         _buildPage('Demande', 'Publier une demande avec médias et localisation'),
         _buildPage('Paramètres', 'Langue, déconnexion, infos'),
       ];
@@ -84,6 +86,14 @@ class _UsersAppShellState extends State<UsersAppShell> {
       backgroundColor: AppTheme.kBackgroundColor,
       appBar: AppBar(title: const Text('Accueil')),
       body: const UsersHomeRecommendations(),
+    );
+  }
+
+  static Widget _buildSearchPage() {
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Recherche')),
+      body: const UsersSearchMap(),
     );
   }
 
@@ -879,6 +889,136 @@ class AppTheme {
         elevation: 8,
         margin: const EdgeInsets.all(12),
       ),
+    );
+  }
+}
+
+class UsersSearchMap extends StatefulWidget {
+  const UsersSearchMap({super.key});
+
+  @override
+  State<UsersSearchMap> createState() => _UsersSearchMapState();
+}
+
+class _UsersSearchMapState extends State<UsersSearchMap> {
+  final GeolocationService _geo = const GeolocationService();
+  final WorkersDiscoveryRepository _repo = WorkersDiscoveryRepository();
+
+  Position? _pos;
+  List<Map<String, dynamic>> _workers = const <Map<String, dynamic>>[];
+  Stream<List<Map<String, dynamic>>>? _stream;
+  final MapController _mapController = MapController();
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _geo.ensurePermission();
+    final pos = await _geo.getCurrentPosition();
+    setState(() {
+      _pos = pos;
+      _stream = _repo.streamRecommendedWorkers(
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_pos == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final ll.LatLng center = ll.LatLng(_pos!.latitude, _pos!.longitude);
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _stream,
+      builder: (context, snapshot) {
+        _workers = snapshot.data ?? const <Map<String, dynamic>>[];
+        final markers = <Marker>[
+          Marker(
+            width: 40,
+            height: 40,
+            point: center,
+            child: const Icon(Icons.my_location_rounded, color: AppTheme.kPrimaryTeal, size: 28),
+          ),
+          ..._workers.map((w) {
+            final GeoPoint? gp = w['lastKnownLocation'] as GeoPoint?;
+            if (gp == null) return const Marker(point: ll.LatLng(0, 0), child: SizedBox.shrink());
+            return Marker(
+              width: 44,
+              height: 44,
+              point: ll.LatLng(gp.latitude, gp.longitude),
+              child: GestureDetector(
+                onTap: () {
+                  _showWorkerSheet(context, w);
+                },
+                child: const Icon(Icons.location_on_rounded, color: Colors.red, size: 36),
+              ),
+            );
+          }),
+        ];
+
+        return FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: center,
+            initialZoom: 14,
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+              subdomains: const ['a', 'b', 'c'],
+              userAgentPackageName: 'com.khidmeti.khidmeti_users',
+            ),
+            MarkerLayer(markers: markers),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showWorkerSheet(BuildContext context, Map<String, dynamic> w) {
+    showModalBottomSheet(
+      context: context,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text((w['displayName'] ?? 'Travailleur').toString(), style: AppTheme.kSubheadingStyle),
+              const SizedBox(height: 8),
+              Text((w['bio'] ?? '—').toString(), style: AppTheme.kBodyStyle),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
+                  const SizedBox(width: 6),
+                  Text(((w['ratingAvg'] ?? 0.0).toDouble()).toStringAsFixed(1), style: AppTheme.kBodyStyle),
+                  const SizedBox(width: 6),
+                  Text('(${(w['ratingCount'] ?? 0) as int})', style: AppTheme.kBodyStyle),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    // TODO: Navigate to full profile screen
+                  },
+                  child: const Text('Voir le profil'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
