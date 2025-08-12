@@ -579,7 +579,7 @@ class WorkerHomeScreen extends StatelessWidget {
 
   Future<void> _toggleVisibility(BuildContext context, bool visible) async {
     if (!kUseFirebase) return;
-    const workerId = 'demo-worker-id';
+    final workerId = FirebaseAuth.instance.currentUser?.uid ?? 'demo-worker-id';
     final repo = WorkerProfileRepository(FirebaseFirestore.instance);
     await repo.updateVisibility(workerId: workerId, visible: visible);
     if (visible) {
