@@ -8,6 +8,11 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:typed_data';
 import 'dart:math';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'dart:io';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -379,6 +384,94 @@ class GeolocationService {
         distanceFilter: distanceFilterMeters,
       ),
     );
+  }
+}
+
+class WorkerVerificationService {
+  WorkerVerificationService();
+
+  Future<Map<String, String>> extractNameFromIdCard({
+    required Uint8List idFrontBytes,
+    String language = 'fr',
+  }) async {
+    final InputImage input = InputImage.fromBytes(
+      bytes: idFrontBytes,
+      metadata: InputImageMetadata(
+        size: Size(0, 0),
+        rotation: InputImageRotation.rotation0deg,
+        format: InputImageFormat.bgra8888,
+        bytesPerRow: 0,
+      ),
+    );
+    final TextRecognizer recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+    final RecognizedText result = await recognizer.processImage(input);
+    await recognizer.close();
+
+    String firstName = '';
+    String lastName = '';
+    for (final block in result.blocks) {
+      final String text = block.text;
+      if (text.toLowerCase().contains('prenom') || text.toLowerCase().contains('prénom')) {
+        firstName = _extractTrailingWord(text);
+      }
+      if (text.toLowerCase().contains('nom')) {
+        lastName = _extractTrailingWord(text);
+      }
+    }
+    return {'firstName': firstName, 'lastName': lastName};
+  }
+
+  Future<bool> validateSelfieAgainstId({
+    required Uint8List idFaceBytes,
+    required Uint8List selfieBytes,
+  }) async {
+    final FaceDetectorOptions options = FaceDetectorOptions(
+      enableContours: false,
+      enableLandmarks: true,
+      performanceMode: FaceDetectorMode.accurate,
+    );
+    final FaceDetector detector = FaceDetector(options: options);
+
+    final InputImage idImage = InputImage.fromFilePath(await _tempWrite(idFaceBytes));
+    final InputImage selfieImage = InputImage.fromFilePath(await _tempWrite(selfieBytes));
+
+    final List<Face> idFaces = await detector.processImage(idImage);
+    final List<Face> selfieFaces = await detector.processImage(selfieImage);
+    await detector.close();
+
+    if (idFaces.isEmpty || selfieFaces.isEmpty) return false;
+
+    // Heuristic placeholder: compare bounding box aspect ratios as a lightweight check
+    final double idRatio = idFaces.first.boundingBox.width / idFaces.first.boundingBox.height;
+    final double selfieRatio = selfieFaces.first.boundingBox.width / selfieFaces.first.boundingBox.height;
+    final double delta = (idRatio - selfieRatio).abs();
+    return delta < 0.25; // Accept if roughly similar
+  }
+
+  String computeIdCardHash({
+    required Uint8List idFrontBytes,
+    required Uint8List idBackBytes,
+  }) {
+    final List<int> combined = <int>[]
+      ..addAll(idFrontBytes)
+      ..addAll(idBackBytes);
+    return base64Url.encode(sha256.convert(combined).bytes);
+  }
+
+  String _extractTrailingWord(String text) {
+    final parts = text.split(':');
+    if (parts.length > 1) {
+      return parts.last.trim().split(RegExp(r'\s+')).first;
+    }
+    final tokens = text.trim().split(RegExp(r'\s+'));
+    return tokens.isNotEmpty ? tokens.last : '';
+  }
+
+  Future<String> _tempWrite(Uint8List bytes) async {
+    final String path = '/tmp/${DateTime.now().microsecondsSinceEpoch}.bin';
+    final file = File(path);
+    await file.writeAsBytes(bytes, flush: true);
+    return path;
   }
 }
 
