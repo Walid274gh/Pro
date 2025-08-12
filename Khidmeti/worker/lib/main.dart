@@ -1349,6 +1349,127 @@ class _WorkersSubscriptionScreenState extends State<WorkersSubscriptionScreen> {
   }
 }
 
+class WorkersSettingsScreen extends StatefulWidget {
+  const WorkersSettingsScreen({super.key});
+
+  @override
+  State<WorkersSettingsScreen> createState() => _WorkersSettingsScreenState();
+}
+
+class _WorkersSettingsScreenState extends State<WorkersSettingsScreen> {
+  final AuthService _auth = AuthService();
+  final SubscriptionRepository _subs = SubscriptionRepository();
+
+  String _language = 'fr';
+  bool _loading = true;
+  bool _active = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      final fb.User? user = _auth.currentUser;
+      if (user != null) {
+        final bool act = await _subs.isActive(user.uid);
+        setState(() {
+          _active = act;
+          _loading = false;
+        });
+      } else {
+        setState(() => _loading = false);
+      }
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _signOut() async {
+    await _auth.signOut();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Déconnecté.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Paramètres')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.verified_rounded, color: AppTheme.kPrimaryTeal),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _active ? 'Abonnement actif' : 'Aucun abonnement actif',
+                  style: AppTheme.kSubheadingStyle,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const WorkerKycScreen()),
+              );
+            },
+            icon: const Icon(Icons.verified_user_rounded),
+            label: const Text('Vérification d’identité (KYC)'),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const WorkersSubscriptionScreen()),
+              );
+            },
+            icon: const Icon(Icons.subscriptions_rounded),
+            label: const Text('Abonnement'),
+          ),
+          const SizedBox(height: 12),
+          Text('Langue', style: AppTheme.kSubheadingStyle),
+          const SizedBox(height: 8),
+          DropdownButton<String>(
+            value: _language,
+            items: const [
+              DropdownMenuItem(value: 'fr', child: Text('Français')),
+              DropdownMenuItem(value: 'en', child: Text('English')),
+              DropdownMenuItem(value: 'ar', child: Text('العربية')),
+            ],
+            onChanged: (v) => setState(() => _language = v ?? _language),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: _signOut,
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('Déconnexion'),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text('Erreur: $_error', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class AppTheme {
   // Couleurs
   static const Color kPrimaryYellow = Color(0xFFFCDC73);
