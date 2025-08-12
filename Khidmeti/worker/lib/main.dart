@@ -62,7 +62,7 @@ class _WorkersAppShellState extends State<WorkersAppShell> {
   int _currentIndex = 0;
 
   List<Widget> get _pages => <Widget>[
-        _buildPage('Accueil', 'Statut en ligne/hors ligne'),
+        const WorkersHomeOnline(),
         _buildPage('Recherche', 'Demandes proches publiées'),
         _buildPage('Historique', 'Travaux réalisés'),
         _buildPage('Paramètres', 'Abonnement, langue, déconnexion'),
