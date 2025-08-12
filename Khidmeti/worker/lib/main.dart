@@ -15,6 +15,7 @@ import 'dart:async';
 import 'package:crypto/crypto.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -1707,6 +1708,37 @@ class _WorkersAssignedScreenState extends State<WorkersAssignedScreen> {
         },
       ),
     );
+  }
+}
+
+class NotificationsTrigger {
+  NotificationsTrigger({FirebaseFunctions? functions})
+      : _functions = functions ?? FirebaseFunctions.instance;
+
+  final FirebaseFunctions _functions;
+
+  Future<void> notifyWorkerAccepted({
+    required String requestId,
+    required String userUid,
+    required String workerUid,
+  }) async {
+    final callable = _functions.httpsCallable('notifyRequestAssigned');
+    await callable.call(<String, dynamic>{
+      'requestId': requestId,
+      'userUid': userUid,
+      'workerUid': workerUid,
+    });
+  }
+
+  Future<void> notifyCompleted({
+    required String requestId,
+    required String userUid,
+  }) async {
+    final callable = _functions.httpsCallable('notifyRequestCompleted');
+    await callable.call(<String, dynamic>{
+      'requestId': requestId,
+      'userUid': userUid,
+    });
   }
 }
 
