@@ -6,6 +6,7 @@ import 'package:lottie/lottie.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 // Design constants (Paytone One palette)
 const Color kPrimaryYellow = Color(0xFFFCDC73);
@@ -38,6 +39,7 @@ const bool SINGLE_FILE_MAIN = true;
 const bool SOLID_ARCHITECTURE = true;
 const bool LOTTIE_ANIMATIONS = true;
 const bool SVG_AVATARS = true;
+const bool kUseFirebase = true;
 
 // Typography styles
 const TextStyle kHeadingStyle = TextStyle(
@@ -240,20 +242,35 @@ class AuthService implements AuthenticationService {
 }
 
 class FirestoreService implements DatabaseService, Readable, Writable, Deletable {
-  @override
-  Future<void> createDocument(String collection, String id, Map<String, dynamic> data) async {}
+  final _db = FirebaseFirestore.instance;
 
   @override
-  Future<Map<String, dynamic>?> getDocument(String collection, String id) async => null;
+  Future<void> createDocument(String collection, String id, Map<String, dynamic> data) async {
+    if (!kUseFirebase) return;
+    await _db.collection(collection).doc(id).set(data, SetOptions(merge: true));
+  }
 
   @override
-  Future<void> delete(String id) async {}
+  Future<Map<String, dynamic>?> getDocument(String collection, String id) async {
+    if (!kUseFirebase) return null;
+    final doc = await _db.collection(collection).doc(id).get();
+    return doc.data();
+  }
 
   @override
-  Future<T?> read<T>(String id) async => null;
+  Future<void> delete(String id) async {
+    // Not bound to specific collection in this stub. No-op.
+  }
 
   @override
-  Future<void> write<T>(String id, T data) async {}
+  Future<T?> read<T>(String id) async {
+    return null; // Generic stub
+  }
+
+  @override
+  Future<void> write<T>(String id, T data) async {
+    // Generic stub
+  }
 }
 
 class StorageService {
@@ -609,12 +626,36 @@ class AuthScreen extends StatelessWidget {
   }
 }
 
+class WorkersRepository {
+  final FirebaseFirestore db;
+  WorkersRepository(this.db);
+
+  Stream<List<WorkerModel>> activeWorkers() {
+    if (!kUseFirebase) {
+      return Stream.value(<WorkerModel>[]);
+    }
+    return db.collection('workers').where('subscriptionStatus', isEqualTo: 'active').where('visibilityOnMap', isEqualTo: true).snapshots().map((snap) {
+      return snap.docs
+          .map((d) => WorkerModel.fromMap(d.id, d.data()))
+          .toList(growable: false);
+    });
+  }
+}
+
+class WorkerSyncService {
+  final WorkersRepository repository;
+  WorkerSyncService(this.repository);
+
+  Stream<List<WorkerModel>> get visibleWorkersStream => repository.activeWorkers();
+}
+
 class HomeScreen extends StatelessWidget {
   final String? selectedAvatar;
   const HomeScreen({super.key, this.selectedAvatar});
 
   @override
   Widget build(BuildContext context) {
+    final workerSync = WorkerSyncService(WorkersRepository(FirebaseFirestore.instance));
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -660,6 +701,28 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  if (kUseFirebase)
+                    StreamBuilder<List<WorkerModel>>(
+                      stream: workerSync.visibleWorkersStream,
+                      builder: (context, snapshot) {
+                        final workers = snapshot.data ?? [];
+                        if (workers.isEmpty) return Text('Aucun pro visible', style: kBodyStyle);
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: workers.take(5).map((w) => Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.verified, color: kPrimaryTeal, size: 18),
+                                const SizedBox(width: 6),
+                                Expanded(child: Text(w.name, style: kBodyStyle.copyWith(color: kTextColor))),
+                              ],
+                            ),
+                          )).toList(),
+                        );
+                      },
+                    ),
                 ],
               ),
             ),

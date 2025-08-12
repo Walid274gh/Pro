@@ -6,6 +6,7 @@ import 'package:lottie/lottie.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 // Design constants (Professional emphasis)
 const Color kPrimaryYellow = Color(0xFFFCDC73);
@@ -38,6 +39,7 @@ const bool SINGLE_FILE_MAIN = true;
 const bool SOLID_ARCHITECTURE = true;
 const bool LOTTIE_ANIMATIONS = true;
 const bool SVG_AVATARS = true;
+const bool kUseFirebase = true;
 
 const TextStyle kHeadingStyle = TextStyle(
   fontFamily: 'Paytone One',
@@ -183,11 +185,20 @@ class AuthService implements AuthenticationService {
 }
 
 class FirestoreService implements DatabaseService, Readable, Writable, Deletable {
-  @override
-  Future<void> createDocument(String collection, String id, Map<String, dynamic> data) async {}
+  final _db = FirebaseFirestore.instance;
 
   @override
-  Future<Map<String, dynamic>?> getDocument(String collection, String id) async => null;
+  Future<void> createDocument(String collection, String id, Map<String, dynamic> data) async {
+    if (!kUseFirebase) return;
+    await _db.collection(collection).doc(id).set(data, SetOptions(merge: true));
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getDocument(String collection, String id) async {
+    if (!kUseFirebase) return null;
+    final doc = await _db.collection(collection).doc(id).get();
+    return doc.data();
+  }
 
   @override
   Future<void> delete(String id) async {}
@@ -261,6 +272,24 @@ class BankCardPaymentProcessor extends PaymentProcessor {
   @override
   Future<PaymentResult> processPayment(double amount, PaymentMethod method) async =>
       const PaymentResult(isSuccess: true, message: 'Bank card processed');
+}
+
+class WorkersAdminRepository {
+  final FirebaseFirestore db;
+  WorkersAdminRepository(this.db);
+
+  Future<void> setSubscriptionActive({required String workerId}) async {
+    if (!kUseFirebase) return;
+    await db.collection('workers').doc(workerId).set({
+      'subscriptionStatus': 'active',
+      'visibilityOnMap': true,
+      'verificationStatus': 'verified',
+      'businessStyle': {
+        'primaryColor': '#193948',
+        'accentColor': '#4FADCD',
+      },
+    }, SetOptions(merge: true));
+  }
 }
 
 // Widgets
@@ -552,6 +581,8 @@ class SubscriptionScreen extends StatelessWidget {
   const SubscriptionScreen({super.key});
   @override
   Widget build(BuildContext context) {
+    final repo = WorkersAdminRepository(FirebaseFirestore.instance);
+    const workerId = 'demo-worker-id';
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -567,9 +598,19 @@ class SubscriptionScreen extends StatelessWidget {
                   children: [
                     Text('Renouvellement', style: kSubheadingStyle),
                     const SizedBox(height: 8),
-                    BubbleButton(label: 'Payer BaridiMob', icon: Icons.payment, onPressed: () {}),
+                    BubbleButton(label: 'Payer BaridiMob', icon: Icons.payment, onPressed: () async {
+                      await repo.setSubscriptionActive(workerId: workerId);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Abonnement activé')));
+                      }
+                    }),
                     const SizedBox(height: 8),
-                    BubbleButton(label: 'Payer Carte', icon: Icons.credit_card, onPressed: () {}),
+                    BubbleButton(label: 'Payer Carte', icon: Icons.credit_card, onPressed: () async {
+                      await repo.setSubscriptionActive(workerId: workerId);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Abonnement activé')));
+                      }
+                    }),
                   ],
                 ),
               ),
