@@ -141,24 +141,52 @@ class UserModel {
     required this.createdAt,
   });
 
-  factory UserModel.fromMap(String id, Map<String, dynamic> map) => UserModel(
-        id: id,
-        name: map['name'] ?? '',
-        email: map['email'] ?? '',
-        selectedAvatar: map['selectedAvatar'] ?? '',
-        preferences: Map<String, dynamic>.from(map['preferences'] ?? {}),
-        createdAt: DateTime.fromMillisecondsSinceEpoch(
-          (map['createdAt'] as int?) ?? DateTime.now().millisecondsSinceEpoch,
-        ),
-      );
+  factory UserModel.fromMap(String id, Map<String, dynamic> map) {
+    final createdRaw = map['createdAt'];
+    DateTime created;
+    if (createdRaw is int) {
+      created = DateTime.fromMillisecondsSinceEpoch(createdRaw);
+    } else if (createdRaw is Timestamp) {
+      created = createdRaw.toDate();
+    } else {
+      created = DateTime.now();
+    }
+    return UserModel(
+      id: id,
+      name: map['name'] ?? '',
+      email: map['email'] ?? '',
+      selectedAvatar: map['selectedAvatar'] ?? '',
+      preferences: Map<String, dynamic>.from(map['preferences'] ?? {}),
+      createdAt: created,
+    );
+  }
 
   Map<String, dynamic> toMap() => {
         'name': name,
         'email': email,
         'selectedAvatar': selectedAvatar,
         'preferences': preferences,
-        'createdAt': createdAt.millisecondsSinceEpoch,
+        'createdAt': Timestamp.fromDate(createdAt),
       };
+
+  UserModel copyWith({
+    String? name,
+    String? email,
+    String? selectedAvatar,
+    Map<String, dynamic>? preferences,
+    DateTime? createdAt,
+  }) {
+    return UserModel(
+      id: id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      selectedAvatar: selectedAvatar ?? this.selectedAvatar,
+      preferences: preferences ?? this.preferences,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  void validate() => UserValidator.validateUser(this);
 }
 
 class WorkerModel {
@@ -651,6 +679,27 @@ class AuthScreen extends StatelessWidget {
   }
 }
 
+class UsersRepository {
+  final FirebaseFirestore db;
+  UsersRepository(this.db);
+
+  CollectionReference<Map<String, dynamic>> get _col => db.collection('users');
+
+  Future<void> upsertUser(UserModel user) async {
+    if (!kUseFirebase) return;
+    user.validate();
+    await _col.doc(user.id).set(user.toMap(), SetOptions(merge: true));
+  }
+
+  Future<UserModel?> getUser(String userId) async {
+    if (!kUseFirebase) return null;
+    final doc = await _col.doc(userId).get();
+    final data = doc.data();
+    if (data == null) return null;
+    return UserModel.fromMap(doc.id, data);
+  }
+}
+
 class WorkersRepository {
   final FirebaseFirestore db;
   WorkersRepository(this.db);
@@ -659,11 +708,12 @@ class WorkersRepository {
     if (!kUseFirebase) {
       return Stream.value(<WorkerModel>[]);
     }
-    return db.collection('workers').where('subscriptionStatus', isEqualTo: 'active').where('visibilityOnMap', isEqualTo: true).snapshots().map((snap) {
-      return snap.docs
-          .map((d) => WorkerModel.fromMap(d.id, d.data()))
-          .toList(growable: false);
-    });
+    return db
+        .collection('workers')
+        .where('subscriptionStatus', isEqualTo: 'active')
+        .where('visibilityOnMap', isEqualTo: true)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => WorkerModel.fromMap(d.id, d.data())).toList(growable: false));
   }
 }
 
@@ -855,5 +905,24 @@ class ProfileScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class UserValidator {
+  static bool isValidEmail(String email) {
+    final regex = RegExp(r'^\S+@\S+\.\S+');
+    return regex.hasMatch(email);
+  }
+
+  static void validateUser(UserModel user) {
+    if (user.name.trim().isEmpty) {
+      throw ArgumentError('Le nom est requis');
+    }
+    if (!isValidEmail(user.email)) {
+      throw ArgumentError('Email invalide');
+    }
+    if (user.selectedAvatar.isEmpty) {
+      throw ArgumentError('Avatar requis');
+    }
   }
 }

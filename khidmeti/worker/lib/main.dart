@@ -321,6 +321,21 @@ class WorkersAdminRepository {
   }
 }
 
+class WorkerProfileRepository {
+  final FirebaseFirestore db;
+  WorkerProfileRepository(this.db);
+
+  Future<void> updateVisibility({required String workerId, required bool visible}) async {
+    if (!kUseFirebase) return;
+    await db.collection('workers').doc(workerId).set({'visibilityOnMap': visible}, SetOptions(merge: true));
+  }
+
+  Future<void> updateVerification({required String workerId, required String status}) async {
+    if (!kUseFirebase) return;
+    await db.collection('workers').doc(workerId).set({'verificationStatus': status}, SetOptions(merge: true));
+  }
+}
+
 // Widgets
 class ModernHeader extends StatelessWidget {
   final String title;
