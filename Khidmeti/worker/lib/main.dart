@@ -65,7 +65,7 @@ class _WorkersAppShellState extends State<WorkersAppShell> {
   List<Widget> get _pages => <Widget>[
         const WorkersHomeOnline(),
         const WorkersNearbyRequestsList(),
-        _buildPage('Historique', 'Travaux réalisés'),
+        const WorkersHistoryScreen(),
         const WorkersSettingsScreen(),
       ];
 
