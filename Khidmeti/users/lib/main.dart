@@ -255,7 +255,7 @@ class _UsersAppShellState extends State<UsersAppShell> {
         _buildHomePage(),
         _buildSearchPage(),
         _buildRequestPage(),
-        _buildPage('Paramètres', 'Langue, déconnexion, infos'),
+        _buildSettingsPage(),
       ];
 
   static Widget _buildPage(String title, String subtitle) {
@@ -273,6 +273,10 @@ class _UsersAppShellState extends State<UsersAppShell> {
         ),
       ),
     );
+  }
+
+  static Widget _buildSettingsPage() {
+    return const UsersSettingsScreen();
   }
 
   static Widget _buildHomePage() {
@@ -1695,7 +1699,11 @@ class _UsersSearchMapState extends State<UsersSearchMap> {
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.of(context).pop();
-                    // TODO: Navigate to full profile screen
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => WorkerProfileScreen(worker: w),
+                      ),
+                    );
                   },
                   child: const Text('Voir le profil'),
                 ),
