@@ -1786,6 +1786,67 @@ class GeoCellsManager {
   }
 }
 
+class WorkerOnlineOrchestrator {
+  WorkerOnlineOrchestrator({
+    GeolocationService? geolocationService,
+    FirestoreProfileRepository? profiles,
+    GeoCellsManager? cellsManager,
+  })  : _geo = geolocationService ?? const GeolocationService(),
+        _profiles = profiles ?? FirestoreProfileRepository(),
+        _cells = cellsManager ?? GeoCellsManager();
+
+  final GeolocationService _geo;
+  final FirestoreProfileRepository _profiles;
+  final GeoCellsManager _cells;
+
+  StreamSubscription<Position>? _posSub;
+  double? _lastLat;
+  double? _lastLng;
+
+  Future<void> goOnline({
+    required String uid,
+    required PushNotificationService push,
+    int cellRadius = 1,
+    int distanceFilterMeters = 20,
+  }) async {
+    await _geo.ensurePermission();
+    final pos = await _geo.getCurrentPosition();
+    _lastLat = pos.latitude;
+    _lastLng = pos.longitude;
+
+    await _profiles.setOnlineStatus(uid: uid, isOnline: true);
+    await _profiles.updateLocation(uid: uid, latitude: pos.latitude, longitude: pos.longitude);
+    await _cells.subscribeArea(latitude: pos.latitude, longitude: pos.longitude, push: push, radius: cellRadius);
+
+    _posSub?.cancel();
+    _posSub = _geo
+        .positionStream(distanceFilterMeters: distanceFilterMeters)
+        .listen((p) async {
+      _lastLat = p.latitude;
+      _lastLng = p.longitude;
+      await _profiles.updateLocation(uid: uid, latitude: p.latitude, longitude: p.longitude);
+    });
+  }
+
+  Future<void> goOffline({
+    required String uid,
+    required PushNotificationService push,
+    int cellRadius = 1,
+  }) async {
+    _posSub?.cancel();
+    _posSub = null;
+    await _profiles.setOnlineStatus(uid: uid, isOnline: false);
+    if (_lastLat != null && _lastLng != null) {
+      await _cells.unsubscribeArea(
+        latitude: _lastLat!,
+        longitude: _lastLng!,
+        push: push,
+        radius: cellRadius,
+      );
+    }
+  }
+}
+
 class AppTheme {
   // Couleurs
   static const Color kPrimaryYellow = Color(0xFFFCDC73);
