@@ -1,0 +1,1 @@
+Add 20 worker SVG avatars here: avatar_worker_1.svg ... avatar_worker_20.svg

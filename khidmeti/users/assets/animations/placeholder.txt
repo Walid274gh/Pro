@@ -1,0 +1,13 @@
+Place animation JSON files here:
+- splash_animation.json
+- splash_workers_background.json
+- login_animation.json
+- loading_spinner.json
+- success_animation.json
+- error_animation.json
+- notification_animation.json
+- map_marker.json
+- chat_typing.json
+- rating_stars.json
+- payment_success.json
+- worker_verification.json

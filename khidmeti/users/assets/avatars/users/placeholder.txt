@@ -1,0 +1,1 @@
+Add 20 user SVG avatars here: avatar_user_1.svg ... avatar_user_20.svg
