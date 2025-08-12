@@ -1140,29 +1140,104 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final TextEditingController _nameCtrl = TextEditingController();
+  final TextEditingController _emailCtrl = TextEditingController();
+  String? _selectedAvatar;
+  bool _saving = false;
+
+  Future<UserModel?> _loadUser() async {
+    final uid = kUseFirebase ? (FirebaseAuth.instance.currentUser?.uid ?? 'local-dev') : 'local-dev';
+    final repo = UsersRepository(FirebaseFirestore.instance);
+    final user = await repo.getUser(uid);
+    if (user != null) {
+      _nameCtrl.text = user.name;
+      _emailCtrl.text = user.email;
+      _selectedAvatar = user.selectedAvatar;
+    }
+    return user;
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final uid = kUseFirebase ? (FirebaseAuth.instance.currentUser?.uid ?? 'local-dev') : 'local-dev';
+    final repo = UsersRepository(FirebaseFirestore.instance);
+    final user = UserModel(
+      id: uid,
+      name: _nameCtrl.text.trim().isEmpty ? 'User' : _nameCtrl.text.trim(),
+      email: _emailCtrl.text.trim().isEmpty ? 'user@example.com' : _emailCtrl.text.trim(),
+      selectedAvatar: _selectedAvatar ?? AvatarService().getRandomUserAvatar(),
+      preferences: const {'primaryColor': '#FCDC73', 'accentColor': '#E76268'},
+      createdAt: DateTime.now(),
+    );
+    await repo.upsertUser(user);
+    if (mounted) setState(() => _saving = false);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profil enregistré')));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(kPadding),
-          children: [
-            const ModernHeader(title: 'Profil'),
-            const SizedBox(height: 16),
-            PrimaryCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Paramètres', style: kSubheadingStyle),
-                  const SizedBox(height: 8),
-                  BubbleButton(label: 'Se déconnecter', icon: Icons.logout, onPressed: () => Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (_) => const SplashScreen()), (r) => false)),
-                ],
-              ),
-            ),
-          ],
+        child: FutureBuilder<UserModel?>(
+          future: _loadUser(),
+          builder: (context, snapshot) {
+            return ListView(
+              padding: const EdgeInsets.all(kPadding),
+              children: [
+                const ModernHeader(title: 'Profil'),
+                const SizedBox(height: 16),
+                PrimaryCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Informations', style: kSubheadingStyle),
+                      const SizedBox(height: 12),
+                      PrimaryCard(
+                        child: TextField(
+                          controller: _nameCtrl,
+                          decoration: const InputDecoration.collapsed(hintText: 'Nom'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      PrimaryCard(
+                        child: TextField(
+                          controller: _emailCtrl,
+                          decoration: const InputDecoration.collapsed(hintText: 'Email'),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text('Avatar', style: kSubheadingStyle),
+                      const SizedBox(height: 8),
+                      AvatarPicker(onSelected: (a) => setState(() => _selectedAvatar = a)),
+                      const SizedBox(height: 12),
+                      if (_saving) const Center(child: LoadingSpinner()) else Center(
+                        child: BubbleButton(label: 'Enregistrer', icon: Icons.save, onPressed: _save),
+                      ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: BubbleButton(
+                          label: 'Se déconnecter',
+                          icon: Icons.logout,
+                          onPressed: () => Navigator.of(context).pushAndRemoveUntil(
+                            MaterialPageRoute(builder: (_) => const SplashScreen()),
+                            (r) => false,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
