@@ -1201,6 +1201,131 @@ class _UsersSubmitRatingState extends State<UsersSubmitRating> {
   }
 }
 
+class WorkerProfileScreen extends StatelessWidget {
+  const WorkerProfileScreen({super.key, required this.worker});
+
+  final Map<String, dynamic> worker;
+
+  @override
+  Widget build(BuildContext context) {
+    final String workerUid = (worker['id'] ?? '').toString();
+    final String name = (worker['displayName'] ?? 'Travailleur').toString();
+    final String photoUrl = (worker['photoUrl'] ?? '').toString();
+    final List categories = (worker['categories'] ?? const <String>[]);
+    final double ratingAvg = (worker['ratingAvg'] ?? 0.0).toDouble();
+    final int ratingCount = (worker['ratingCount'] ?? 0) as int;
+
+    final RatingsRepository ratingsRepo = RatingsRepository();
+
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Profil travailleur')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 36,
+                backgroundColor: AppTheme.kPrimaryTeal.withValues(alpha: 0.2),
+                backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                child: photoUrl.isEmpty ? Text(name.isNotEmpty ? name[0].toUpperCase() : '?', style: AppTheme.kSubheadingStyle) : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name, style: AppTheme.kSubheadingStyle),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
+                        const SizedBox(width: 4),
+                        Text(ratingAvg.toStringAsFixed(1), style: AppTheme.kBodyStyle),
+                        const SizedBox(width: 8),
+                        Text('($ratingCount)', style: AppTheme.kBodyStyle),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: categories
+                          .take(6)
+                          .map((c) => Chip(
+                                label: Text(c.toString()),
+                                backgroundColor: AppTheme.kButton3DLight,
+                                side: const BorderSide(color: AppTheme.kPrimaryYellow),
+                              ))
+                          .toList(),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text('Avis récents', style: AppTheme.kSubheadingStyle),
+          const SizedBox(height: 8),
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: ratingsRepo.streamWorkerRatings(workerUid),
+            builder: (context, snapshot) {
+              final items = snapshot.data ?? const <Map<String, dynamic>>[];
+              if (items.isEmpty) {
+                return Text('Aucun avis pour le moment', style: AppTheme.kBodyStyle);
+              }
+              return Column(
+                children: items.map((m) {
+                  final double score = (m['score'] ?? 0.0).toDouble();
+                  final String comment = (m['comment'] ?? '').toString();
+                  return Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.star_rounded, color: Colors.amber, size: 20),
+                              const SizedBox(width: 6),
+                              Text(score.toStringAsFixed(1), style: AppTheme.kBodyStyle),
+                            ],
+                          ),
+                          if (comment.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Text(comment, style: AppTheme.kBodyStyle),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => UsersSubmitRating(
+                    workerUid: workerUid,
+                    requestId: 'from-profile', // à remplacer par l’ID de demande terminée le cas échéant
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.rate_review_rounded),
+            label: const Text('Noter ce travailleur'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class NotificationsTrigger {
   NotificationsTrigger({FirebaseFunctions? functions})
       : _functions = functions ?? FirebaseFunctions.instance;
