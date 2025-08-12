@@ -664,6 +664,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (kUseFirebase) {
     await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     await _initFcmForUsers();
   }
   runApp(const KhidmetiApp());
@@ -688,6 +689,34 @@ Future<void> _initFcmForUsers() async {
   FirebaseMessaging.onMessage.listen((message) {
     // Foreground handling placeholder
   });
+}
+
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Ensure Firebase is initialized in background
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp();
+  }
+}
+
+abstract class NotificationServiceBase {
+  Future<void> sendNotificationToUser(String userId, String title, String body);
+}
+
+class FirebaseNotificationService implements NotificationServiceBase {
+  final FirebaseFirestore db;
+  FirebaseNotificationService(this.db);
+
+  @override
+  Future<void> sendNotificationToUser(String userId, String title, String body) async {
+    if (!kUseFirebase) return;
+    // Stub: in a real backend, use Cloud Functions or server to send FCM using the user's token
+    // Here we just write a notification document for demo/testing
+    await db.collection('users').doc(userId).collection('notifications').add({
+      'title': title,
+      'body': body,
+      'createdAt': Timestamp.fromDate(DateTime.now()),
+    });
+  }
 }
 
 class KhidmetiApp extends StatelessWidget {

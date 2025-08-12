@@ -515,6 +515,25 @@ class PaymentService {
   }
 }
 
+abstract class NotificationServiceBase {
+  Future<void> sendNotificationToWorker(String workerId, String title, String body);
+}
+
+class FirebaseNotificationService implements NotificationServiceBase {
+  final FirebaseFirestore db;
+  FirebaseNotificationService(this.db);
+
+  @override
+  Future<void> sendNotificationToWorker(String workerId, String title, String body) async {
+    if (!kUseFirebase) return;
+    await db.collection('workers').doc(workerId).collection('notifications').add({
+      'title': title,
+      'body': body,
+      'createdAt': Timestamp.fromDate(DateTime.now()),
+    });
+  }
+}
+
 // Widgets
 class ModernHeader extends StatelessWidget {
   final String title;
@@ -640,6 +659,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (kUseFirebase) {
     await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     await _initFcmForWorkers();
   }
   runApp(const KhidmetiWorkerApp());
@@ -664,6 +684,12 @@ Future<void> _initFcmForWorkers() async {
   FirebaseMessaging.onMessage.listen((message) {
     // Foreground handling placeholder
   });
+}
+
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp();
+  }
 }
 
 class KhidmetiWorkerApp extends StatelessWidget {
