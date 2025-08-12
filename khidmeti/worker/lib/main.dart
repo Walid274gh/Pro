@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 // Flags
 const bool USE_PAYTONE_COLORS = true;
@@ -143,7 +144,7 @@ class _WorkerHomeState extends State<WorkerHome> {
     _DashboardView(),
     MapScreen(),
     RequestsScreenPro(),
-    _Placeholder('Profil'),
+    WorkerProfileScreen(),
   ];
 
   @override
@@ -692,5 +693,98 @@ class _RequestRow extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class WorkerProfileScreen extends StatefulWidget {
+  const WorkerProfileScreen({super.key});
+  @override
+  State<WorkerProfileScreen> createState() => _WorkerProfileScreenState();
+}
+
+class _WorkerProfileScreenState extends State<WorkerProfileScreen> {
+  bool _visibleOnMap = true;
+  String _status = 'active';
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const ModernHeader(title: 'Profil professionnel'),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Material(
+                elevation: 6,
+                color: kSurfaceColor,
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Visibilité sur la carte', style: kHeadingStyle.copyWith(fontSize: 18)),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        value: _visibleOnMap,
+                        onChanged: (v) => setState(() => _visibleOnMap = v),
+                        title: const Text('Afficher mon profil sur la carte'),
+                      ),
+                      const SizedBox(height: 16),
+                      Text('Statut d\'abonnement', style: kHeadingStyle.copyWith(fontSize: 18)),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: _status,
+                        items: const [
+                          DropdownMenuItem(value: 'active', child: Text('Actif')),
+                          DropdownMenuItem(value: 'inactive', child: Text('Inactif')),
+                          DropdownMenuItem(value: 'trial', child: Text('Essai')),
+                        ],
+                        onChanged: (v) => setState(() => _status = v ?? 'active'),
+                        decoration: const InputDecoration(border: OutlineInputBorder()),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              BubbleButton(
+                text: 'Enregistrer',
+                onPressed: _save,
+                primaryColor: kPrimaryDark,
+                height: 52,
+                width: double.infinity,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _save() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Veuillez vous connecter')),
+      );
+      return;
+    }
+    try {
+      await FirebaseFirestore.instance.collection('workers').doc(user.uid).set({
+        'visibilityOnMap': _visibleOnMap,
+        'subscriptionStatus': _status,
+      }, SetOptions(merge: true));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profil mis à jour')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Erreur lors de l\'enregistrement')),
+      );
+    }
   }
 }
