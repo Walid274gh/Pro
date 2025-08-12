@@ -1,0 +1,27 @@
+name: shared_assets
+description: Shared assets (animations, icons, images, avatars, fonts) for Khidmeti apps
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+  flutter: '>=3.19.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  assets:
+    - animations/
+    - icons/
+    - images/
+    - avatars/users/
+    - avatars/workers/
+  fonts:
+    - family: Paytone One
+      fonts:
+        - asset: fonts/PaytoneOne-Regular.ttf
+    - family: Inter
+      fonts:
+        - asset: fonts/Inter-Variable.ttf
