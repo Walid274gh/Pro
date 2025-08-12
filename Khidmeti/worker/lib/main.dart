@@ -1742,6 +1742,50 @@ class NotificationsTrigger {
   }
 }
 
+class GeoCellsManager {
+  GeoCellsManager({this.cellSizeDeg = 0.02});
+
+  final double cellSizeDeg; // ~2.2km latitude par défaut
+
+  String cellId(double latitude, double longitude) {
+    final int latKey = (latitude / cellSizeDeg).floor();
+    final int lngKey = (longitude / cellSizeDeg).floor();
+    return 'c_${latKey}_$lngKey';
+    }
+
+  List<String> neighborCells(double latitude, double longitude, int radius) {
+    final int latKey = (latitude / cellSizeDeg).floor();
+    final int lngKey = (longitude / cellSizeDeg).floor();
+    final List<String> cells = <String>[];
+    for (int dx = -radius; dx <= radius; dx++) {
+      for (int dy = -radius; dy <= radius; dy++) {
+        cells.add('c_${latKey + dx}_${lngKey + dy}');
+      }
+    }
+    return cells;
+  }
+
+  Future<void> subscribeArea({
+    required double latitude,
+    required double longitude,
+    required PushNotificationService push,
+    int radius = 1,
+  }) async {
+    final cells = neighborCells(latitude, longitude, radius);
+    await push.subscribeToGeoCells(cells);
+  }
+
+  Future<void> unsubscribeArea({
+    required double latitude,
+    required double longitude,
+    required PushNotificationService push,
+    int radius = 1,
+  }) async {
+    final cells = neighborCells(latitude, longitude, radius);
+    await push.unsubscribeFromGeoCells(cells);
+  }
+}
+
 class AppTheme {
   // Couleurs
   static const Color kPrimaryYellow = Color(0xFFFCDC73);
