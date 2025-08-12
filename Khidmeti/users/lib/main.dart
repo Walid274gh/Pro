@@ -484,6 +484,95 @@ class RequestsRepository {
   }
 }
 
+class WorkersDiscoveryRepository {
+  WorkersDiscoveryRepository({FirebaseFirestore? firestore})
+      : _firestore = firestore ?? FirebaseFirestore.instance;
+
+  final FirebaseFirestore _firestore;
+  static const double _cellSizeDeg = 0.02; // ~2.2km latitude
+
+  CollectionReference<Map<String, dynamic>> get _profiles =>
+      _firestore.collection('profiles');
+
+  Stream<List<Map<String, dynamic>>> streamRecommendedWorkers({
+    required double latitude,
+    required double longitude,
+    String? category,
+    int neighborRadius = 1,
+    int limit = 50,
+  }) {
+    final List<String> targetCells = _neighborCells(latitude, longitude, neighborRadius);
+
+    Query<Map<String, dynamic>> q = _profiles
+        .where('role', isEqualTo: 'worker')
+        .where('approved', isEqualTo: true)
+        .where('isOnline', isEqualTo: true)
+        .where('cellId', whereIn: targetCells);
+
+    if (category != null && category.isNotEmpty) {
+      q = q.where('categories', arrayContains: category);
+    }
+
+    return q.limit(limit).snapshots().map((snap) {
+      final List<Map<String, dynamic>> items = snap.docs
+          .map((d) => {'id': d.id, ...d.data()})
+          .toList();
+
+      for (final m in items) {
+        final GeoPoint? gp = m['lastKnownLocation'] as GeoPoint?;
+        if (gp != null) {
+          m['distanceKm'] = _haversineKm(latitude, longitude, gp.latitude, gp.longitude);
+        } else {
+          m['distanceKm'] = 99999.0;
+        }
+      }
+
+      items.sort((a, b) {
+        final double ra = (a['ratingAvg'] ?? 0.0).toDouble();
+        final double rb = (b['ratingAvg'] ?? 0.0).toDouble();
+        final int rc = rb.compareTo(ra);
+        if (rc != 0) return rc;
+        final int ca = (a['ratingCount'] ?? 0) as int;
+        final int cb = (b['ratingCount'] ?? 0) as int;
+        final int cc = cb.compareTo(ca);
+        if (cc != 0) return cc;
+        final double da = (a['distanceKm'] ?? 99999.0).toDouble();
+        final double db = (b['distanceKm'] ?? 99999.0).toDouble();
+        return da.compareTo(db);
+      });
+
+      return items;
+    });
+  }
+
+  List<String> _neighborCells(double latitude, double longitude, int radius) {
+    final int latKey = (latitude / _cellSizeDeg).floor();
+    final int lngKey = (longitude / _cellSizeDeg).floor();
+    final List<String> cells = <String>[];
+    for (int dx = -radius; dx <= radius; dx++) {
+      for (int dy = -radius; dy <= radius; dy++) {
+        cells.add('c_${latKey + dx}_${lngKey + dy}');
+      }
+    }
+    return cells;
+  }
+
+  double _haversineKm(double lat1, double lon1, double lat2, double lon2) {
+    const double r = 6371.0;
+    final double dLat = _degToRad(lat2 - lat1);
+    final double dLon = _degToRad(lon2 - lon1);
+    final double a =
+        (sin(dLat / 2) * sin(dLat / 2)) +
+            cos(_degToRad(lat1)) *
+                cos(_degToRad(lat2)) *
+                (sin(dLon / 2) * sin(dLon / 2));
+    final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return r * c;
+  }
+
+  double _degToRad(double deg) => deg * (pi / 180.0);
+}
+
 class PushNotificationService {
   PushNotificationService({
     FirebaseMessaging? messaging,
