@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
-void main() {
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+}
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await FirebaseBootstrap.initialize();
   runApp(const MyApp());
 }
 
@@ -48,6 +56,36 @@ class _HomeScreen extends StatelessWidget {
         child: Text('Bienvenue', style: AppTheme.kHeadingStyle),
       ),
     );
+  }
+}
+
+class FirebaseBootstrap {
+  FirebaseBootstrap._();
+
+  static Future<void> initialize() async {
+    await Firebase.initializeApp();
+
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+    await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+      announcement: false,
+      carPlay: false,
+      criticalAlert: false,
+      provisional: false,
+    );
+
+    await FirebaseMessaging.instance.setAutoInitEnabled(true);
+    await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    final String? token = await FirebaseMessaging.instance.getToken();
+    debugPrint('FCM token (Workers): $token');
   }
 }
 
