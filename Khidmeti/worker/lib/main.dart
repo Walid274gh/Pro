@@ -626,6 +626,11 @@ class _WorkersHomeOnlineState extends State<WorkersHomeOnline> {
   final AuthService _auth = AuthService();
   final FirestoreProfileRepository _profiles = FirestoreProfileRepository();
   final GeolocationService _geo = const GeolocationService();
+  final WorkerOnlineOrchestrator _online = WorkerOnlineOrchestrator();
+  final PushNotificationService _push = PushNotificationService(
+    profileRepository: FirestoreProfileRepository(),
+    role: 'workers',
+  );
 
   bool _isOnline = false;
   Position? _lastPosition;
@@ -668,31 +673,14 @@ class _WorkersHomeOnlineState extends State<WorkersHomeOnline> {
     setState(() => _isOnline = value);
 
     if (value) {
-      // Passer en ligne: écouter la position et pousser dans Firestore
+      await _push.initForSignedInUser(user.uid);
       final Position pos = await _geo.getCurrentPosition();
       setState(() => _lastPosition = pos);
-      await _profiles.setOnlineStatus(uid: user.uid, isOnline: true);
-      await _profiles.updateLocation(
-        uid: user.uid,
-        latitude: pos.latitude,
-        longitude: pos.longitude,
-      );
-      _posSub?.cancel();
-      _posSub = _geo
-          .positionStream(distanceFilterMeters: 20)
-          .listen((Position p) async {
-        setState(() => _lastPosition = p);
-        await _profiles.updateLocation(
-          uid: user.uid,
-          latitude: p.latitude,
-          longitude: p.longitude,
-        );
-      });
+      await _online.goOnline(uid: user.uid, push: _push, cellRadius: 1, distanceFilterMeters: 20);
     } else {
-      // Hors ligne: arrêter l’écoute et mettre à jour le statut
       _posSub?.cancel();
       _posSub = null;
-      await _profiles.setOnlineStatus(uid: user.uid, isOnline: false);
+      await _online.goOffline(uid: user.uid, push: _push, cellRadius: 1);
     }
   }
 
