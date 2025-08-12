@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:crypto/crypto.dart';
 import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -931,6 +932,166 @@ class _WorkersNearbyRequestsListState extends State<WorkersNearbyRequestsList> {
           );
         },
       ),
+    );
+  }
+}
+
+class WorkerKycScreen extends StatefulWidget {
+  const WorkerKycScreen({super.key});
+
+  @override
+  State<WorkerKycScreen> createState() => _WorkerKycScreenState();
+}
+
+class _WorkerKycScreenState extends State<WorkerKycScreen> {
+  final WorkerVerificationService _verif = WorkerVerificationService();
+  final StorageService _storage = StorageService(role: 'workers');
+  final FirestoreProfileRepository _profiles = FirestoreProfileRepository();
+  final AuthService _auth = AuthService();
+  final ImagePicker _picker = ImagePicker();
+
+  XFile? _front;
+  XFile? _back;
+  XFile? _selfie;
+  String? _firstName;
+  String? _lastName;
+  String? _error;
+  bool _submitting = false;
+
+  Future<void> _pickFront() async {
+    final f = await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    if (f != null) setState(() => _front = f);
+  }
+
+  Future<void> _pickBack() async {
+    final f = await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    if (f != null) setState(() => _back = f);
+  }
+
+  Future<void> _pickSelfie() async {
+    final f = await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    if (f != null) setState(() => _selfie = f);
+  }
+
+  Future<void> _submit() async {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      setState(() => _error = 'Veuillez vous connecter.');
+      return;
+    }
+    if (_front == null || _back == null || _selfie == null) {
+      setState(() => _error = 'Veuillez fournir recto, verso et selfie.');
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      final frontBytes = await _front!.readAsBytes();
+      final backBytes = await _back!.readAsBytes();
+      final selfieBytes = await _selfie!.readAsBytes();
+
+      final names = await _verif.extractNameFromIdCard(idFrontBytes: frontBytes);
+      final bool faceOk = await _verif.validateSelfieAgainstId(
+        idFaceBytes: frontBytes, // simplification: use front area
+        selfieBytes: selfieBytes,
+      );
+      if (!faceOk) {
+        throw Exception('Vérification faciale échouée.');
+      }
+      final String idHash = _verif.computeIdCardHash(
+        idFrontBytes: frontBytes,
+        idBackBytes: backBytes,
+      );
+      await _profiles.ensureUniqueIdCardHash(uid: user.uid, idCardHash: idHash);
+
+      final String frontUrl = await _storage.uploadData(
+        uid: user.uid,
+        data: frontBytes,
+        category: 'kyc',
+        extension: 'jpg',
+      );
+      final String backUrl = await _storage.uploadData(
+        uid: user.uid,
+        data: backBytes,
+        category: 'kyc',
+        extension: 'jpg',
+      );
+      final String selfieUrl = await _storage.uploadData(
+        uid: user.uid,
+        data: selfieBytes,
+        category: 'kyc',
+        extension: 'jpg',
+      );
+
+      await _profiles.upsertProfile(
+        uid: user.uid,
+        data: {
+          'role': 'worker',
+          'approved': false,
+          'displayName': '${names['firstName'] ?? ''} ${names['lastName'] ?? ''}'.trim(),
+          'kyc': {
+            'frontUrl': frontUrl,
+            'backUrl': backUrl,
+            'selfieUrl': selfieUrl,
+            'hash': idHash,
+          },
+        },
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Documents envoyés pour vérification.')),
+      );
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Vérification d’identité')), 
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text('Téléversez vos documents', style: AppTheme.kHeadingStyle),
+          const SizedBox(height: 12),
+          _buildPickerRow('Recto CNI', _front, _pickFront),
+          const SizedBox(height: 8),
+          _buildPickerRow('Verso CNI', _back, _pickBack),
+          const SizedBox(height: 8),
+          _buildPickerRow('Selfie', _selfie, _pickSelfie),
+          const SizedBox(height: 12),
+          if (_error != null)
+            Text('Erreur: $_error', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: _submitting ? null : _submit,
+            icon: const Icon(Icons.verified_user_rounded),
+            label: _submitting ? const Text('Envoi...') : const Text('Soumettre'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPickerRow(String label, XFile? file, Future<void> Function() onPick) {
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: AppTheme.kSubheadingStyle)),
+        const SizedBox(width: 8),
+        if (file != null)
+          const Icon(Icons.check_circle_rounded, color: AppTheme.kSuccessColor)
+        else
+          const Icon(Icons.error_outline_rounded, color: AppTheme.kErrorColor),
+        const SizedBox(width: 8),
+        ElevatedButton(
+          onPressed: onPick,
+          child: const Text('Choisir'),
+        ),
+      ],
     );
   }
 }
