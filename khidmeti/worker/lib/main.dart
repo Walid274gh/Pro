@@ -142,7 +142,7 @@ class _WorkerHomeState extends State<WorkerHome> {
   final List<Widget> _tabs = const [
     _DashboardView(),
     MapScreen(),
-    _Placeholder('Demandes'),
+    RequestsScreenPro(),
     _Placeholder('Profil'),
   ];
 
@@ -606,6 +606,90 @@ class MapScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class RequestsScreenPro extends StatelessWidget {
+  const RequestsScreenPro({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: const [
+        ModernHeader(title: 'Demandes'),
+        Expanded(
+          child: _RequestsList(),
+        ),
+      ],
+    );
+  }
+}
+
+class _RequestsList extends StatelessWidget {
+  const _RequestsList();
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: const [
+        _RequestRow(title: 'Nettoyage', date: 'Aujourd\'hui 14:00', place: 'Hydra', color: kPrimaryTeal),
+        SizedBox(height: 12),
+        _RequestRow(title: 'Peinture', date: 'Demain 10:00', place: 'Bir Mourad Rais', color: kPrimaryYellow),
+      ],
+    );
+  }
+}
+
+class _RequestRow extends StatelessWidget {
+  final String title;
+  final String date;
+  final String place;
+  final Color color;
+  const _RequestRow({
+    required this.title,
+    required this.date,
+    required this.place,
+    required this.color,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 6,
+      color: kSurfaceColor,
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.assignment, color: color),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: kHeadingStyle.copyWith(fontSize: 16)),
+                  const SizedBox(height: 4),
+                  Text('$date • $place', style: kBodyStyle),
+                ],
+              ),
+            ),
+            BubbleButton(
+              text: 'Voir',
+              onPressed: () {},
+              primaryColor: kPrimaryDark,
+              height: 40,
+              width: 90,
+            ),
+          ],
+        ),
       ),
     );
   }

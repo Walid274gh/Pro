@@ -348,9 +348,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<Widget> _screens = const [
     _HomeView(),
-    _Placeholder('Recherche'),
+    SearchScreen(),
     MapScreen(),
-    _Placeholder('Demandes'),
+    RequestsScreen(),
     _Placeholder('Profil'),
   ];
 
@@ -1001,5 +1001,153 @@ class ChatService {
 
   Future<void> sendMessage(String chatId, Map<String, dynamic> message) async {
     await _db.createDocument('chats/$chatId/messages', DateTime.now().millisecondsSinceEpoch.toString(), message);
+  }
+}
+
+class SearchScreen extends StatefulWidget {
+  const SearchScreen({super.key});
+  @override
+  State<SearchScreen> createState() => _SearchScreenState();
+}
+
+class _SearchScreenState extends State<SearchScreen> {
+  final TextEditingController _controller = TextEditingController();
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const ModernHeader(title: 'Recherche'),
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Container(
+            decoration: BoxDecoration(
+              color: kSurfaceColor,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: kPrimaryDark.withOpacity(0.06),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: TextField(
+              controller: _controller,
+              decoration: const InputDecoration(
+                icon: Icon(Icons.search),
+                hintText: 'Rechercher un service...',
+                border: InputBorder.none,
+              ),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: [
+              if (_query.isEmpty)
+                Text('Suggestions', style: kHeadingStyle.copyWith(fontSize: 18))
+              else
+                Text('Résultats pour "$_query"', style: kHeadingStyle.copyWith(fontSize: 18)),
+              const SizedBox(height: 12),
+              ModernCard(
+                title: 'Jardinage',
+                subtitle: 'Entretien d\'espaces verts',
+                illustration: const Icon(Icons.grass, size: 80, color: kPrimaryDark),
+                backgroundColor: kPrimaryYellow,
+                onTap: () {},
+              ),
+              ModernCard(
+                title: 'Peinture',
+                subtitle: 'Rafraîchissez vos murs',
+                illustration: const Icon(Icons.format_paint, size: 80, color: Colors.white),
+                backgroundColor: kPrimaryRed,
+                onTap: () {},
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class RequestsScreen extends StatelessWidget {
+  const RequestsScreen({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const ModernHeader(title: 'Mes demandes'),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _RequestTile(
+                title: 'Nettoyage',
+                status: 'En cours',
+                color: kPrimaryTeal,
+                date: 'Aujourd\'hui 14:00',
+              ),
+              _RequestTile(
+                title: 'Plomberie',
+                status: 'En attente',
+                color: kPrimaryYellow,
+                date: 'Demain 09:30',
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RequestTile extends StatelessWidget {
+  final String title;
+  final String status;
+  final String date;
+  final Color color;
+  const _RequestTile({
+    required this.title,
+    required this.status,
+    required this.date,
+    required this.color,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: kSurfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: kPrimaryDark.withOpacity(0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ListTile(
+        leading: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(Icons.assignment, color: color),
+        ),
+        title: Text(title, style: kHeadingStyle.copyWith(fontSize: 16)),
+        subtitle: Text(date, style: kBodyStyle),
+        trailing: Text(status, style: kSubheadingStyle.copyWith(color: color, fontSize: 14)),
+        onTap: () {},
+      ),
+    );
   }
 }
