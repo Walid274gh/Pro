@@ -15,6 +15,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 
 // Flags
 const bool USE_PAYTONE_COLORS = true;
@@ -82,7 +83,7 @@ Future<void> main() async {
   try { await FirebaseMessaging.instance.requestPermission(); } catch (_) {}
   // Initialize push notifications
   await initializePushNotifications(flutterLocalNotificationsPlugin);
-  runApp(const KhidmetiApp());
+  runApp(const AppRoot());
 }
 
 Future<void> initializePushNotifications(FlutterLocalNotificationsPlugin plugin) async {
@@ -113,6 +114,21 @@ Future<void> initializePushNotifications(FlutterLocalNotificationsPlugin plugin)
       }, SetOptions(merge: true));
     }
   } catch (_) {}
+}
+
+class AppRoot extends StatelessWidget {
+  const AppRoot({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider(FirebaseAuth.instance, FirebaseFirestore.instance)..initialize()),
+        ChangeNotifierProvider(create: (_) => MapProvider(FirebaseFirestore.instance)..initialize()),
+        ChangeNotifierProvider(create: (_) => RequestProvider(FirebaseFirestore.instance)),
+      ],
+      child: const KhidmetiApp(),
+    );
+  }
 }
 
 class KhidmetiApp extends StatelessWidget {
@@ -873,6 +889,7 @@ class UserModel {
   }
 }
 
+// Enhanced Models with mapping
 class WorkerModel {
   final String id;
   final String firstName;
@@ -899,6 +916,36 @@ class WorkerModel {
     required this.isVisible,
     required this.portfolio,
   });
+
+  Map<String, dynamic> toMap() => {
+        'firstName': firstName,
+        'lastName': lastName,
+        'selectedAvatar': selectedAvatar,
+        'services': services,
+        'rating': rating,
+        'totalReviews': totalReviews,
+        'location': location,
+        'isAvailable': isAvailable,
+        'isVisible': isVisible,
+        'portfolio': portfolio,
+      };
+
+  factory WorkerModel.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final d = doc.data() ?? {};
+    return WorkerModel(
+      id: doc.id,
+      firstName: d['firstName'] ?? '',
+      lastName: d['lastName'] ?? '',
+      selectedAvatar: d['selectedAvatar'] ?? '',
+      services: (d['services'] as List?)?.cast<String>() ?? const [],
+      rating: (d['rating'] ?? 0).toDouble(),
+      totalReviews: (d['totalReviews'] ?? 0) as int,
+      location: d['location'] is GeoPoint ? d['location'] as GeoPoint : const GeoPoint(0, 0),
+      isAvailable: d['isAvailable'] ?? false,
+      isVisible: d['isVisible'] ?? true,
+      portfolio: Map<String, dynamic>.from(d['portfolio'] ?? {}),
+    );
+  }
 }
 
 class ServiceModel {
@@ -919,9 +966,38 @@ class ServiceModel {
     required this.iconPath,
     this.isActive = true,
   });
+
+  Map<String, dynamic> toMap() => {
+        'name': name,
+        'category': category,
+        'description': description,
+        'basePrice': basePrice,
+        'iconPath': iconPath,
+        'isActive': isActive,
+      };
+
+  factory ServiceModel.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final d = doc.data() ?? {};
+    return ServiceModel(
+      id: doc.id,
+      name: d['name'] ?? '',
+      category: d['category'] ?? '',
+      description: d['description'] ?? '',
+      basePrice: (d['basePrice'] ?? 0).toDouble(),
+      iconPath: d['iconPath'] ?? '',
+      isActive: d['isActive'] ?? true,
+    );
+  }
 }
 
 enum RequestStatus { pending, accepted, inProgress, completed, cancelled }
+
+extension RequestStatusX on RequestStatus {
+  String get name => toString().split('.').last;
+  static RequestStatus from(String v) {
+    return RequestStatus.values.firstWhere((e) => e.name == v, orElse: () => RequestStatus.pending);
+  }
+}
 
 class RequestModel {
   final String id;
@@ -930,7 +1006,7 @@ class RequestModel {
   final String serviceType;
   final String description;
   final List<String> mediaUrls;
-  final GeoPoint location;
+  final GeoPoint? location;
   final DateTime scheduledDate;
   final RequestStatus status;
   final double? finalPrice;
@@ -947,6 +1023,34 @@ class RequestModel {
     required this.status,
     this.finalPrice,
   });
+
+  Map<String, dynamic> toMap() => {
+        'userId': userId,
+        'workerId': workerId,
+        'serviceType': serviceType,
+        'description': description,
+        'mediaUrls': mediaUrls,
+        'location': location,
+        'scheduledDate': scheduledDate.millisecondsSinceEpoch,
+        'status': status.name,
+        'finalPrice': finalPrice,
+      };
+
+  factory RequestModel.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final d = doc.data() ?? {};
+    return RequestModel(
+      id: doc.id,
+      userId: d['userId'] ?? '',
+      workerId: d['workerId'],
+      serviceType: d['serviceType'] ?? '',
+      description: d['description'] ?? '',
+      mediaUrls: (d['mediaUrls'] as List?)?.cast<String>() ?? const [],
+      location: d['location'],
+      scheduledDate: DateTime.fromMillisecondsSinceEpoch(d['scheduledDate'] ?? 0),
+      status: RequestStatusX.from(d['status'] ?? 'pending'),
+      finalPrice: (d['finalPrice'] as num?)?.toDouble(),
+    );
+  }
 }
 
 // Utility Services
