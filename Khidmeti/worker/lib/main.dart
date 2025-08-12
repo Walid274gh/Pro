@@ -1532,6 +1532,72 @@ class WorkOrdersRepository {
   }
 }
 
+class WorkersHistoryScreen extends StatefulWidget {
+  const WorkersHistoryScreen({super.key});
+
+  @override
+  State<WorkersHistoryScreen> createState() => _WorkersHistoryScreenState();
+}
+
+class _WorkersHistoryScreenState extends State<WorkersHistoryScreen> {
+  final WorkOrdersRepository _repo = WorkOrdersRepository();
+  final AuthService _auth = AuthService();
+
+  @override
+  Widget build(BuildContext context) {
+    final fb.User? user = _auth.currentUser;
+    if (user == null) {
+      return Scaffold(
+        backgroundColor: AppTheme.kBackgroundColor,
+        appBar: AppBar(title: const Text('Historique')),
+        body: Center(
+          child: Text('Non connecté', style: AppTheme.kBodyStyle.copyWith(color: AppTheme.kErrorColor)),
+        ),
+      );
+    }
+    return Scaffold(
+      backgroundColor: AppTheme.kBackgroundColor,
+      appBar: AppBar(title: const Text('Historique')),
+      body: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: _repo.streamHistory(user.uid),
+        builder: (context, snapshot) {
+          final items = snapshot.data ?? const <Map<String, dynamic>>[];
+          if (items.isEmpty) {
+            return Center(child: Text('Aucun travail terminé', style: AppTheme.kBodyStyle));
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final m = items[index];
+              final String title = (m['title'] ?? 'Travail').toString();
+              final String category = (m['category'] ?? '—').toString();
+              final Timestamp? completedAtTs = m['completedAt'] as Timestamp?;
+              final String completedAtStr = completedAtTs != null
+                  ? completedAtTs.toDate().toLocal().toString()
+                  : '';
+              return Card(
+                child: ListTile(
+                  title: Text(title, style: AppTheme.kSubheadingStyle),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 4),
+                      Text('Catégorie: $category', style: AppTheme.kBodyStyle),
+                      if (completedAtStr.isNotEmpty)
+                        Text('Terminé: $completedAtStr', style: AppTheme.kBodyStyle),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
 class AppTheme {
   // Couleurs
   static const Color kPrimaryYellow = Color(0xFFFCDC73);
