@@ -7,8 +7,10 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'models/worker.dart';
+import 'models/job_request.dart';
 import 'services/auth_service.dart';
 import 'services/presence_service.dart';
 import 'services/job_request_service.dart';
@@ -17,6 +19,8 @@ import 'services/notification_service.dart';
 import 'services/message_service.dart';
 import 'utils/firebase_config.dart';
 import 'utils/app_bus.dart';
+import 'screens/auth/register_screen.dart';
+import 'screens/subscription/subscription_screen.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -165,6 +169,13 @@ class _SignInScreenState extends State<_SignInScreen> {
                 style: ElevatedButton.styleFrom(backgroundColor: kPrimaryTeal, foregroundColor: Colors.white),
                 onPressed: _busy ? null : _signIn,
                 child: _busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Se connecter'),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterWorkerScreen()));
+                },
+                child: const Text('Créer un compte'),
               ),
             ],
           ),
@@ -538,6 +549,14 @@ class _SettingsScreenState extends State<_SettingsScreen> {
                 onPressed: _busy ? null : _applyFreeTrial,
                 style: ElevatedButton.styleFrom(backgroundColor: kPrimaryTeal, foregroundColor: Colors.white),
                 child: _busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Activer essai gratuit'),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SubscriptionScreen()));
+                },
+                icon: const Icon(Icons.payment),
+                label: const Text('Gérer mon abonnement'),
               ),
             ],
           ),
