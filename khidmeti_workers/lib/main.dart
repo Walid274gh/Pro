@@ -16,6 +16,7 @@ import 'services/subscription_service.dart';
 import 'services/notification_service.dart';
 import 'services/message_service.dart';
 import 'utils/firebase_config.dart';
+import 'utils/app_bus.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -187,6 +188,22 @@ class _MainNavState extends State<_MainNav> {
     _HistoryScreen(),
     _SettingsScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    AppBus.tabIndex.addListener(_onTabChange);
+  }
+
+  void _onTabChange() {
+    if (mounted) setState(() => _idx = AppBus.tabIndex.value);
+  }
+
+  @override
+  void dispose() {
+    AppBus.tabIndex.removeListener(_onTabChange);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

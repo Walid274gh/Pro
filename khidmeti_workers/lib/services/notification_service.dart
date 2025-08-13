@@ -3,6 +3,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../utils/firebase_config.dart';
+import '../utils/app_bus.dart';
 
 class WorkerNotificationService {
   static final WorkerNotificationService _instance = WorkerNotificationService._internal();
@@ -23,17 +24,16 @@ class WorkerNotificationService {
   static const NotificationDetails _details = NotificationDetails(android: _androidDetails);
 
   Future<void> initialize(String workerId) async {
-    // Local notifications
     const initializationSettings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       iOS: DarwinInitializationSettings(),
     );
-    await _local.initialize(initializationSettings, onDidReceiveNotificationResponse: (resp) {});
+    await _local.initialize(initializationSettings, onDidReceiveNotificationResponse: (resp) {
+      AppBus.tabIndex.value = 1; // Aller vers Demandes
+    });
 
-    // FCM permissions
     await _messaging.requestPermission(alert: true, badge: true, sound: true);
 
-    // Save token
     final token = await _messaging.getToken();
     if (token != null) {
       await _firestore.collection(FirebaseConfig.workersCollection).doc(workerId).update({'fcmToken': token});
@@ -50,6 +50,10 @@ class WorkerNotificationService {
         message.notification?.body ?? '',
         _details,
       );
+    });
+
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      AppBus.tabIndex.value = 1;
     });
   }
 }
