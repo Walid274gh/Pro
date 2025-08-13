@@ -21,6 +21,7 @@ import 'utils/firebase_config.dart';
 import 'utils/app_bus.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/subscription/subscription_screen.dart';
+import 'utils/app_locale.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -30,6 +31,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  await AppLocale.loadInitial();
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   runApp(const KhidmetiWorkersApp());
 }
@@ -70,27 +72,34 @@ class _KhidmetiWorkersAppState extends State<KhidmetiWorkersApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'KHIDMETI Workers',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: kPrimaryRed),
-        scaffoldBackgroundColor: kBackgroundColor,
-        fontFamily: 'Inter',
-      ),
-      home: StreamBuilder<fb_auth.User?>(
-        stream: _auth.authStateChanges,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const _Splash();
-          }
-          final user = snapshot.data;
-          if (user == null) {
-            return const _SignInScreen();
-          }
-          return const _MainNav();
-        },
-      ),
+    return ValueListenableBuilder<Locale>(
+      valueListenable: AppLocale.locale,
+      builder: (context, locale, _) {
+        return MaterialApp(
+          title: 'KHIDMETI Workers',
+          theme: ThemeData(
+            useMaterial3: true,
+            colorScheme: ColorScheme.fromSeed(seedColor: kPrimaryRed),
+            scaffoldBackgroundColor: kBackgroundColor,
+            fontFamily: 'Inter',
+          ),
+          locale: locale,
+          supportedLocales: AppLocale.supportedLocales,
+          home: StreamBuilder<fb_auth.User?>(
+            stream: _auth.authStateChanges,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const _Splash();
+              }
+              final user = snapshot.data;
+              if (user == null) {
+                return const _SignInScreen();
+              }
+              return const _MainNav();
+            },
+          ),
+        );
+      },
     );
   }
 }
@@ -512,6 +521,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
     final w = _auth.currentWorker;
     if (w != null) {
       await _auth.updateProfile(language: lang);
+      await AppLocale.setLanguage(lang);
       _snack('Langue mise à jour');
     }
   }
