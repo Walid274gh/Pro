@@ -8,7 +8,6 @@ import 'services/auth_service.dart';
 import 'domain/repositories/auth_repository.dart' as domain;
 import 'data/repositories/auth_repository_impl.dart' as data_impl;
 import 'presentation/screens/client/auth/phone_auth_screen.dart';
-import 'presentation/screens/client/home/home_screen.dart';
 import 'services/location_service.dart';
 import 'domain/repositories/location_repository.dart' as loc_domain;
 import 'data/repositories/location_repository_impl.dart' as loc_impl;
@@ -16,6 +15,7 @@ import 'services/job_service.dart';
 import 'domain/repositories/job_repository.dart' as job_domain;
 import 'data/repositories/job_repository_impl.dart' as job_impl;
 import 'services/notification_service.dart';
+import 'presentation/screens/client/shell/bottom_nav_shell.dart';
 
 Future<void> main() async {
 	WidgetsFlutterBinding.ensureInitialized();
@@ -47,9 +47,8 @@ class MyApp extends StatelessWidget {
 				home: Consumer<AuthProvider>(
 					builder: (context, auth, _) {
 						if (auth.currentUser == null) return const PhoneAuthScreen();
-						// Initialize FCM tokens once signed-in
 						notificationService.initializeForClient(auth.currentUser!.id);
-						return const ClientHomeScreen();
+						return const BottomNavShell();
 					},
 				),
 			),
