@@ -7,6 +7,7 @@ import '../../../../core/constants/service_categories.dart';
 import '../../../../domain/repositories/job_repository.dart';
 import '../../../../services/job_service.dart';
 import '../proposal/proposal_form_screen.dart';
+import '../../../providers/auth_provider.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
 	const WorkerDashboardScreen({super.key});
@@ -22,9 +23,16 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
 	@override
 	Widget build(BuildContext context) {
 		final jobService = Provider.of<JobService>(context, listen: false);
+		final worker = context.watch<AuthProvider>().currentWorker;
 		return Scaffold(
 			backgroundColor: AppColors.gray50,
-			appBar: AppBar(title: const Text('Demandes à proximité')),
+			appBar: AppBar(
+				title: Row(children: [
+					const Text('Demandes à proximité'),
+					const SizedBox(width: 8),
+					if ((worker?.isVerified ?? false)) const Icon(Icons.verified, color: Colors.lightBlue, size: 18),
+				]),
+			),
 			body: StreamBuilder<List<OpenJobCard>>(
 				stream: jobService.watchOpenJobs(around: _mockLocation, radiusKm: 10, categories: const [ServiceCategory.cleaning, ServiceCategory.plumbing]),
 				builder: (context, snapshot) {

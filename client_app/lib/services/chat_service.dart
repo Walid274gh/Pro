@@ -9,6 +9,14 @@ class ChatMessage {
 	const ChatMessage({required this.id, required this.chatId, required this.senderId, required this.text, required this.sentAt});
 }
 
+class ChatSummary {
+	final String chatId;
+	final String clientId;
+	final String workerId;
+	final DateTime createdAt;
+	const ChatSummary({required this.chatId, required this.clientId, required this.workerId, required this.createdAt});
+}
+
 class ChatService {
 	final FirebaseFirestore _db = FirebaseFirestore.instance;
 
@@ -27,6 +35,23 @@ class ChatService {
 		final q = await _db.collection('chats').where('clientId', isEqualTo: clientId).where('workerId', isEqualTo: workerId).limit(1).get();
 		if (q.docs.isEmpty) return null;
 		return q.docs.first.id;
+	}
+
+	Stream<List<ChatSummary>> streamChatsForClient(String clientId) {
+		return _db
+			.collection('chats')
+			.where('clientId', isEqualTo: clientId)
+			.orderBy('createdAt', descending: true)
+			.snapshots()
+			.map((s) => s.docs.map((d) {
+				final data = d.data();
+				return ChatSummary(
+					chatId: d.id,
+					clientId: data['clientId'] as String,
+					workerId: data['workerId'] as String,
+					createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0),
+				);
+			}).toList());
 	}
 
 	Stream<List<ChatMessage>> messages(String chatId) {
