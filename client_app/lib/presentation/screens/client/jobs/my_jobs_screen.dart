@@ -4,7 +4,8 @@ import 'package:provider/provider.dart';
 import '../../../../services/job_service.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../../domain/entities/job_request.dart';
-import 'proposals_screen.dart';
+import '../chat/chat_screen.dart';
+import '../../../../services/chat_service.dart';
 
 class MyJobsScreen extends StatelessWidget {
 	const MyJobsScreen({super.key});
@@ -28,10 +29,21 @@ class MyJobsScreen extends StatelessWidget {
 						return ListTile(
 							title: Text(j.title),
 							subtitle: Text('Statut: '+j.status),
-							onTap: () {
-								Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProposalsScreen(jobId: j.id, jobTitle: j.title)));
-							},
-							trailing: const Icon(Icons.chevron_right),
+							onTap: () {},
+							trailing: Row(
+								mainAxisSize: MainAxisSize.min,
+								children: [
+									if (j.acceptedWorkerId != null) IconButton(
+										icon: const Icon(Icons.chat_bubble_outline),
+										onPressed: () async {
+											final chat = ChatService();
+											final chatId = await chat.createOrGetChat(clientId, j.acceptedWorkerId!);
+											if (context.mounted) Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatScreen(chatId: chatId, myId: clientId)));
+										},
+									),
+									const Icon(Icons.chevron_right),
+								],
+							),
 							shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
 							tileColor: Colors.white,
 						);
