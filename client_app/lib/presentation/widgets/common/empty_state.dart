@@ -15,7 +15,7 @@ class EmptyState extends StatelessWidget {
 				child: Column(
 					mainAxisAlignment: MainAxisAlignment.center,
 					children: [
-						Lottie.asset(animationAsset, width: 220, repeat: true),
+						Lottie.asset(animationAsset, width: 220, repeat: true, errorBuilder: (_, __, ___) => const Icon(Icons.inbox, size: 96, color: Colors.black26)),
 						const SizedBox(height: 12),
 						Text(title, style: Theme.of(context).textTheme.titleMedium, textAlign: TextAlign.center),
 						if (subtitle != null) ...[
