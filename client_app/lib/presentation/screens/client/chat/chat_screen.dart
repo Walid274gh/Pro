@@ -47,29 +47,38 @@ class _ChatScreenState extends State<ChatScreen> {
 							builder: (context, snapshot) {
 								final messages = snapshot.data ?? const <ChatMessage>[];
 								if (messages.isNotEmpty) WidgetsBinding.instance.addPostFrameCallback((_) => _service.markRead(widget.chatId, widget.myId));
-								return ListView.builder(
-									reverse: true,
-									itemCount: messages.length,
-									itemBuilder: (_, i) {
-										final m = messages[i];
-										final isMe = m.senderId == widget.myId;
-										return Align(
-											alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-											child: Container(
-												margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-												padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-												decoration: BoxDecoration(color: isMe ? Colors.blue.shade100 : Colors.grey.shade200, borderRadius: BorderRadius.circular(12)),
-												child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-													Text(m.text),
-													Text(_fmt(m.sentAt), style: const TextStyle(fontSize: 10, color: Colors.black54)),
-												]),
-											),
-										);
+								return StreamBuilder<DateTime>(
+									stream: widget.peerId != null ? _service.lastRead(widget.chatId, widget.peerId!) : const Stream<DateTime>.empty(),
+									builder: (_, lastReadSnap) {
+										final peerLastRead = lastReadSnap.data ?? DateTime.fromMillisecondsSinceEpoch(0);
+										return ListView.builder(
+											reverse: true,
+											itemCount: messages.length,
+											itemBuilder: (_, i) {
+												final m = messages[i];
+												final isMe = m.senderId == widget.myId;
+												final isRead = isMe && m.sentAt.isBefore(peerLastRead.add(const Duration(milliseconds: 1)));
+												return Align(
+													alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+													child: Container(
+														margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+														padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+														decoration: BoxDecoration(color: isMe ? Colors.blue.shade100 : Colors.grey.shade200, borderRadius: BorderRadius.circular(12)),
+														child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+															Text(m.text),
+															Row(mainAxisSize: MainAxisSize.min, children: [
+																Text(_fmt(m.sentAt), style: const TextStyle(fontSize: 10, color: Colors.black54)),
+																if (isMe) const SizedBox(width: 6),
+																if (isMe) Icon(isRead ? Icons.done_all : Icons.check, size: 14, color: isRead ? Colors.blueAccent : Colors.black45),
+															]),
+														]),
+												),
+											);
 									},
-								);
-							},
+									);
+								},
+							),
 						),
-					),
 					StreamBuilder<bool>(
 						stream: widget.peerId != null ? _service.typing(widget.chatId, widget.peerId!) : const Stream<bool>.empty(),
 						builder: (_, s) => s.data == true ? const Padding(padding: EdgeInsets.only(bottom: 4), child: Text('L\'artisan est en train d\'écrire...', style: TextStyle(fontSize: 12, color: Colors.black54))) : const SizedBox.shrink(),
