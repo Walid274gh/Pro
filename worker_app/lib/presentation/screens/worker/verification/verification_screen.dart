@@ -6,6 +6,8 @@ import 'package:image_picker/image_picker.dart';
 import '../../../../services/ml_kit_service_impl.dart';
 import '../../../../domain/entities/identity_verification.dart';
 import '../../../../core/constants/document_type.dart';
+import '../../../../core/constants/verification_status.dart';
+import '../../../../services/verification_service.dart';
 
 class VerificationScreen extends StatefulWidget {
 	const VerificationScreen({super.key});
@@ -15,11 +17,13 @@ class VerificationScreen extends StatefulWidget {
 
 class _VerificationScreenState extends State<VerificationScreen> {
 	final MLKitServiceImpl _ml = MLKitServiceImpl();
+	final VerificationService _service = VerificationService();
 	File? _docFront;
 	File? _selfie;
 	ExtractedData? _extracted;
 	bool? _faceOk;
 	DocumentType? _docType;
+	bool _busy = false;
 
 	Future<void> _pickDoc() async {
 		final x = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 85);
@@ -39,6 +43,30 @@ class _VerificationScreenState extends State<VerificationScreen> {
 				_faceOk = await _ml.verifyFaceMatch(_selfie!.path, _docFront!.path);
 				setState(() {});
 			}
+		}
+	}
+
+	Future<void> _submit() async {
+		if (_docFront == null || _selfie == null || _extracted == null || _docType == null) return;
+		setState(() => _busy = true);
+		final workerId = 'me'; // TODO: from worker auth
+		final frontUrl = await _service.uploadImage(workerId, _docFront!, 'front');
+		final selfieUrl = await _service.uploadImage(workerId, _selfie!, 'selfie');
+		final verification = IdentityVerification(
+			id: DateTime.now().millisecondsSinceEpoch.toString(),
+			workerId: workerId,
+			type: _docType!,
+			frontImageUrl: frontUrl,
+			backImageUrl: selfieUrl,
+			extractedInfo: _extracted!,
+			faceMatch: FaceVerificationResult(isMatch: _faceOk ?? false, confidence: (_faceOk ?? false) ? 0.9 : 0.0, livenessPassed: true),
+			status: VerificationStatus.pending,
+			createdAt: DateTime.now(),
+		);
+		await _service.submitVerification(verification);
+		if (mounted) {
+			setState(() => _busy = false);
+			ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vérification soumise')));
 		}
 	}
 
@@ -66,6 +94,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
 						],
 						if (_docType != null) Text('Type: '+_docType!.name.toUpperCase()),
 						if (_faceOk != null) Text(_faceOk! ? 'Correspondance visage: OK' : 'Correspondance visage: Échec', style: TextStyle(color: _faceOk! ? Colors.green : Colors.red)),
+						const SizedBox(height: 16),
+						ElevatedButton(onPressed: _busy ? null : _submit, child: Text(_busy ? 'Envoi...' : 'Soumettre')),
 					],
 				),
 			),
