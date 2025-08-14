@@ -12,6 +12,9 @@ import 'presentation/screens/client/home/home_screen.dart';
 import 'services/location_service.dart';
 import 'domain/repositories/location_repository.dart' as loc_domain;
 import 'data/repositories/location_repository_impl.dart' as loc_impl;
+import 'services/job_service.dart';
+import 'domain/repositories/job_repository.dart' as job_domain;
+import 'data/repositories/job_repository_impl.dart' as job_impl;
 
 Future<void> main() async {
 	WidgetsFlutterBinding.ensureInitialized();
@@ -28,10 +31,13 @@ class MyApp extends StatelessWidget {
 		final authService = AuthServiceImpl(authRepo);
 		final locRepo = loc_impl.LocationRepositoryImpl();
 		final locService = LocationServiceImpl(locRepo);
+		final job_domain.JobRepository jobRepo = job_impl.JobRepositoryImpl();
+		final jobService = JobServiceImpl(jobRepo);
 		return MultiProvider(
 			providers: [
 				ChangeNotifierProvider(create: (_) => AuthProvider(authService)),
 				Provider<LocationService>(create: (_) => locService),
+				Provider<JobService>(create: (_) => jobService),
 			],
 			child: MaterialApp(
 				title: 'Khidmeti Client',
