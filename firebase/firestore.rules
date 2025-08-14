@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+	match /databases/{database}/documents {
+		function isSignedIn() {
+			return request.auth != null;
+		}
+
+		function isClient(uid) {
+			return exists(/databases/$(database)/documents/clients/$(uid));
+		}
+
+		function isWorker(uid) {
+			return exists(/databases/$(database)/documents/workers/$(uid));
+		}
+
+		// =================== CLIENTS =====================
+		match /clients/{clientId} {
+			allow read: if isSignedIn() && request.auth.uid == clientId;
+			allow create: if isSignedIn() && request.auth.uid == clientId;
+			allow update: if isSignedIn() && request.auth.uid == clientId;
+		}
+
+		// =================== WORKERS =====================
+		match /workers/{workerId} {
+			allow read: if isSignedIn();
+			allow create: if isSignedIn() && request.auth.uid == workerId;
+			allow update: if isSignedIn() && request.auth.uid == workerId &&
+				request.resource.data.diff(resource.data).changedKeys().hasOnly(['isOnline','location','lastSeen','avatarUrl','serviceCategories','nextAvailable','isVerified']);
+		}
+
+		// =================== JOBS ========================
+		match /jobs/{jobId} {
+			allow read: if isSignedIn();
+			allow create: if isSignedIn() && isClient(request.auth.uid) && request.resource.data.clientId == request.auth.uid;
+			allow update: if isSignedIn() && isClient(request.auth.uid) && resource.data.clientId == request.auth.uid;
+		}
+
+		// =================== PROPOSALS ===================
+		match /proposals/{proposalId} {
+			allow read: if isSignedIn();
+			allow create: if isSignedIn() && isWorker(request.auth.uid) && request.resource.data.workerId == request.auth.uid;
+			allow update: if isSignedIn() && isWorker(request.auth.uid) && resource.data.workerId == request.auth.uid;
+		}
+
+		// =================== RATINGS =====================
+		match /ratings/{ratingId} {
+			allow read: if isSignedIn();
+			allow create: if isSignedIn() && isClient(request.auth.uid) && request.resource.data.clientId == request.auth.uid;
+		}
+
+		// =================== VERIFICATIONS ===============
+		match /verifications/{verificationId} {
+			allow read: if false;
+			allow create: if isSignedIn() && isWorker(request.auth.uid) && request.resource.data.workerId == request.auth.uid;
+		}
+
+		// =================== SUBSCRIPTIONS ===============
+		match /subscriptions/{workerId} {
+			allow read, update, create: if isSignedIn() && request.auth.uid == workerId;
+		}
+
+		// =================== CHATS =======================
+		match /chats/{chatId} {
+			allow read, update, delete: if isSignedIn() && (resource.data.clientId == request.auth.uid || resource.data.workerId == request.auth.uid);
+			allow create: if isSignedIn() && (
+				(request.resource.data.clientId == request.auth.uid && isClient(request.auth.uid)) ||
+				(request.resource.data.workerId == request.auth.uid && isWorker(request.auth.uid))
+			);
+
+			match /messages/{messageId} {
+				allow read, create: if isSignedIn() && (get(/databases/$(database)/documents/chats/$(chatId)).data.clientId == request.auth.uid || get(/databases/$(database)/documents/chats/$(chatId)).data.workerId == request.auth.uid);
+			}
+
+			match /members/{memberId} {
+				allow read, write: if isSignedIn() && (get(/databases/$(database)/documents/chats/$(chatId)).data.clientId == request.auth.uid || get(/databases/$(database)/documents/chats/$(chatId)).data.workerId == request.auth.uid);
+			}
+		}
+	}
+}
