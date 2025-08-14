@@ -6,7 +6,7 @@ import '../../domain/entities/nearby_worker_view.dart';
 import '../../domain/repositories/location_repository.dart';
 import '../../domain/value_objects/location.dart';
 import '../../services/firebase_service.dart';
-import '../..//services/geohash.dart';
+import '../../services/geohash.dart';
 
 class LocationRepositoryImpl implements LocationRepository {
 	FirebaseFirestore get _db => FirebaseService.db;

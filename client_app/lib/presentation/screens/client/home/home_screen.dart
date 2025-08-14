@@ -6,6 +6,7 @@ import '../../../../domain/value_objects/location.dart';
 import '../../../../domain/entities/nearby_worker_view.dart';
 import '../../../../core/constants/service_categories.dart';
 import '../../../../services/location_service.dart';
+import '../jobs/job_creation_screen.dart';
 
 class ClientHomeScreen extends StatefulWidget {
 	const ClientHomeScreen({super.key});
@@ -49,7 +50,9 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 									),
 									const SizedBox(width: 12),
 									ElevatedButton(
-										onPressed: () {},
+										onPressed: () {
+											Navigator.of(context).push(MaterialPageRoute(builder: (_) => const JobCreationScreen()));
+										},
 										child: const Text('Créer un job'),
 									),
 								],
