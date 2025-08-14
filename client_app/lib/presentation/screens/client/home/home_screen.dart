@@ -7,6 +7,7 @@ import '../../../../domain/entities/nearby_worker_view.dart';
 import '../../../../core/constants/service_categories.dart';
 import '../../../../services/location_service.dart';
 import '../jobs/job_creation_screen.dart';
+import '../map/map_screen.dart';
 
 class ClientHomeScreen extends StatefulWidget {
 	const ClientHomeScreen({super.key});
@@ -54,6 +55,13 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 											Navigator.of(context).push(MaterialPageRoute(builder: (_) => const JobCreationScreen()));
 										},
 										child: const Text('Créer un job'),
+									),
+									const SizedBox(width: 8),
+									OutlinedButton(
+										onPressed: () {
+											Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ClientMapScreen()));
+										},
+										child: const Text('Carte'),
 									),
 								],
 							),
