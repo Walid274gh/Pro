@@ -15,6 +15,7 @@ import 'data/repositories/location_repository_impl.dart' as loc_impl;
 import 'services/job_service.dart';
 import 'domain/repositories/job_repository.dart' as job_domain;
 import 'data/repositories/job_repository_impl.dart' as job_impl;
+import 'services/notification_service.dart';
 
 Future<void> main() async {
 	WidgetsFlutterBinding.ensureInitialized();
@@ -33,6 +34,7 @@ class MyApp extends StatelessWidget {
 		final locService = LocationServiceImpl(locRepo);
 		final job_domain.JobRepository jobRepo = job_impl.JobRepositoryImpl();
 		final jobService = JobServiceImpl(jobRepo);
+		final notificationService = NotificationService();
 		return MultiProvider(
 			providers: [
 				ChangeNotifierProvider(create: (_) => AuthProvider(authService)),
@@ -43,7 +45,12 @@ class MyApp extends StatelessWidget {
 				title: 'Khidmeti Client',
 				theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: AppColors.coral), useMaterial3: true),
 				home: Consumer<AuthProvider>(
-					builder: (context, auth, _) => auth.currentUser == null ? const PhoneAuthScreen() : const ClientHomeScreen(),
+					builder: (context, auth, _) {
+						if (auth.currentUser == null) return const PhoneAuthScreen();
+						// Initialize FCM tokens once signed-in
+						notificationService.initializeForClient(auth.currentUser!.id);
+						return const ClientHomeScreen();
+					},
 				),
 			),
 		);

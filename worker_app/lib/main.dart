@@ -7,10 +7,13 @@ import 'services/job_service.dart';
 import 'domain/repositories/job_repository.dart' as domain;
 import 'data/repositories/job_repository_impl.dart' as data_impl;
 import 'presentation/screens/worker/dashboard/dashboard_screen.dart';
+import 'services/notification_service.dart';
 
 Future<void> main() async {
 	WidgetsFlutterBinding.ensureInitialized();
 	await Firebase.initializeApp();
+	// TODO: replace with authenticated worker id
+	await NotificationService().initializeForWorker('me');
 	runApp(const WorkerApp());
 }
 
