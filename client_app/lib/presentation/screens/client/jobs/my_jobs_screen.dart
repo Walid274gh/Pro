@@ -7,6 +7,7 @@ import '../../../../domain/entities/job_request.dart';
 import '../chat/chat_screen.dart';
 import '../../../../services/chat_service.dart';
 import '../../../widgets/common/empty_state.dart';
+import '../../../../localization/app_localizations.dart';
 
 class MyJobsScreen extends StatelessWidget {
 	const MyJobsScreen({super.key});
@@ -15,12 +16,13 @@ class MyJobsScreen extends StatelessWidget {
 		final auth = context.watch<AuthProvider>();
 		final jobService = Provider.of<JobService>(context, listen: false);
 		final clientId = auth.currentUser!.id;
+		final loc = AppLocalizations(Localizations.localeOf(context));
 		return StreamBuilder<List<JobRequest>>(
 			stream: jobService.watchClientJobs(clientId),
 			builder: (context, snapshot) {
 				if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 				final jobs = snapshot.data!;
-				if (jobs.isEmpty) return const EmptyState(animationAsset: 'assets/lottie/empty-box.json', title: 'Aucun travail');
+				if (jobs.isEmpty) return EmptyState(animationAsset: 'assets/lottie/empty-box.json', title: loc.t('no_jobs'));
 				return ListView.separated(
 					padding: const EdgeInsets.all(16),
 					itemCount: jobs.length,

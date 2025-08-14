@@ -6,6 +6,7 @@ import '../../../../services/chat_service.dart';
 import '../../../providers/auth_provider.dart';
 import 'chat_screen.dart';
 import '../../../widgets/common/empty_state.dart';
+import '../../../../localization/app_localizations.dart';
 
 class ChatListScreen extends StatelessWidget {
 	const ChatListScreen({super.key});
@@ -14,6 +15,7 @@ class ChatListScreen extends StatelessWidget {
 	Widget build(BuildContext context) {
 		final clientId = context.watch<AuthProvider>().currentUser!.id;
 		final chatService = ChatService();
+		final loc = AppLocalizations(Localizations.localeOf(context));
 		return Scaffold(
 			appBar: AppBar(title: const Text('Mes conversations')),
 			body: StreamBuilder<List<ChatSummary>>(
@@ -21,7 +23,7 @@ class ChatListScreen extends StatelessWidget {
 				builder: (context, snapshot) {
 					if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 					final chats = snapshot.data!;
-					if (chats.isEmpty) return const EmptyState(animationAsset: 'assets/lottie/empty-chat.json', title: 'Aucune conversation');
+					if (chats.isEmpty) return EmptyState(animationAsset: 'assets/lottie/empty-chat.json', title: loc.t('no_conversations'));
 					return ListView.separated(
 						itemCount: chats.length,
 						separatorBuilder: (_, __) => const Divider(height: 1),
