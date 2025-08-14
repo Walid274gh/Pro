@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../core/themes/app_colors.dart';
-import '../../../presentation/providers/auth_provider.dart';
+import '../../../../core/themes/app_colors.dart';
+import '../../../providers/auth_provider.dart';
 
 class PhoneAuthScreen extends StatefulWidget {
 	const PhoneAuthScreen({super.key});
