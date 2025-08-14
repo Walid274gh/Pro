@@ -9,6 +9,8 @@ import '../../../../services/location_service.dart';
 import '../../../../domain/entities/nearby_worker_view.dart';
 import '../../../../core/constants/service_categories.dart';
 import '../../../../core/themes/app_colors.dart';
+import '../../widgets/common/animated_rating.dart';
+import '../jobs/job_creation_screen.dart';
 
 class ClientMapScreen extends StatefulWidget {
 	const ClientMapScreen({super.key});
@@ -19,6 +21,38 @@ class ClientMapScreen extends StatefulWidget {
 
 class _ClientMapScreenState extends State<ClientMapScreen> {
 	final vo.Location _center = const vo.Location(latitude: 36.7525, longitude: 3.04197);
+
+	void _showWorkerSheet(NearbyWorkerView w) {
+		showModalBottomSheet(
+			context: context,
+			shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+			builder: (_) {
+				return Padding(
+					padding: const EdgeInsets.all(16),
+					child: Column(
+						mainAxisSize: MainAxisSize.min,
+						crossAxisAlignment: CrossAxisAlignment.start,
+						children: [
+							Row(children: [
+								CircleAvatar(radius: 26, backgroundImage: w.avatarUrl != null ? NetworkImage(w.avatarUrl!) : null, child: w.avatarUrl == null ? const Icon(Icons.person) : null),
+								const SizedBox(width: 12),
+								Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+									Text(w.fullName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+									Row(children: [AnimatedRating(rating: w.averageRating), const SizedBox(width: 8), Text(w.distanceKm.toStringAsFixed(1)+' km')]),
+								])),
+							]),
+						const SizedBox(height: 12),
+						Row(children: [
+							Expanded(child: OutlinedButton.icon(onPressed: () {}, icon: const Icon(Icons.chat_bubble_outline), label: const Text('Contacter'))),
+							const SizedBox(width: 8),
+							Expanded(child: ElevatedButton.icon(onPressed: () { Navigator.of(context).push(MaterialPageRoute(builder: (_) => const JobCreationScreen())); }, icon: const Icon(Icons.event_available), label: const Text('Réserver'))),
+						]),
+						const SizedBox(height: 8),
+					],
+				);
+			},
+		);
+	}
 
 	@override
 	Widget build(BuildContext context) {
@@ -33,7 +67,7 @@ class _ClientMapScreenState extends State<ClientMapScreen> {
 						point: LatLng(w.location.latitude, w.location.longitude),
 						width: 44,
 						height: 44,
-						builder: (ctx) => _WorkerMarker(worker: w),
+						builder: (ctx) => GestureDetector(onTap: () => _showWorkerSheet(w), child: _WorkerMarker(worker: w)),
 					)).toList();
 					return FlutterMap(
 						options: MapOptions(
