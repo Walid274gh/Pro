@@ -8,6 +8,7 @@ class NearbyWorkerView {
 	final double averageRating;
 	final int completedJobs;
 	final bool isOnline;
+	final bool isVerified;
 	final List<ServiceCategory> categories;
 	final Location location;
 	final double distanceKm;
@@ -19,6 +20,7 @@ class NearbyWorkerView {
 		required this.averageRating,
 		required this.completedJobs,
 		required this.isOnline,
+		required this.isVerified,
 		required this.categories,
 		required this.location,
 		required this.distanceKm,

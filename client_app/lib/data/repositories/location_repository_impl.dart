@@ -36,6 +36,7 @@ class LocationRepositoryImpl implements LocationRepository {
 				averageRating: (data['averageRating'] is num) ? (data['averageRating'] as num).toDouble() : 0.0,
 				completedJobs: (data['completedJobs'] as int?) ?? 0,
 				isOnline: (data['isOnline'] as bool?) ?? false,
+				isVerified: (data['isVerified'] as bool?) ?? false,
 				categories: ((data['serviceCategories'] as List?) ?? const <dynamic>[]).map((e) => ServiceCategory.fromKey(e.toString())).toList(),
 				location: workerLoc,
 				distanceKm: around.distanceKmTo(workerLoc),

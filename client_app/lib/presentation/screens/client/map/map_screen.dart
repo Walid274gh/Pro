@@ -11,6 +11,9 @@ import '../../../../core/constants/service_categories.dart';
 import '../../../../core/themes/app_colors.dart';
 import '../../widgets/common/animated_rating.dart';
 import '../jobs/job_creation_screen.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../services/chat_service.dart';
+import '../chat/chat_screen.dart';
 
 class ClientMapScreen extends StatefulWidget {
 	const ClientMapScreen({super.key});
@@ -21,6 +24,14 @@ class ClientMapScreen extends StatefulWidget {
 
 class _ClientMapScreenState extends State<ClientMapScreen> {
 	final vo.Location _center = const vo.Location(latitude: 36.7525, longitude: 3.04197);
+
+	Future<void> _openChat(NearbyWorkerView w) async {
+		final clientId = context.read<AuthProvider>().currentUser!.id;
+		final chatService = ChatService();
+		final chatId = await chatService.createOrGetChat(clientId, w.workerId);
+		if (!mounted) return;
+		Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatScreen(chatId: chatId, myId: clientId)));
+	}
 
 	void _showWorkerSheet(NearbyWorkerView w) {
 		showModalBottomSheet(
@@ -37,13 +48,13 @@ class _ClientMapScreenState extends State<ClientMapScreen> {
 								CircleAvatar(radius: 26, backgroundImage: w.avatarUrl != null ? NetworkImage(w.avatarUrl!) : null, child: w.avatarUrl == null ? const Icon(Icons.person) : null),
 								const SizedBox(width: 12),
 								Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-									Text(w.fullName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+									Row(children: [Text(w.fullName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)), if (w.isVerified) const Padding(padding: EdgeInsets.only(left: 6), child: Icon(Icons.verified, color: Colors.lightBlue, size: 18))]),
 									Row(children: [AnimatedRating(rating: w.averageRating), const SizedBox(width: 8), Text(w.distanceKm.toStringAsFixed(1)+' km')]),
 								])),
 							]),
 						const SizedBox(height: 12),
 						Row(children: [
-							Expanded(child: OutlinedButton.icon(onPressed: () {}, icon: const Icon(Icons.chat_bubble_outline), label: const Text('Contacter'))),
+							Expanded(child: OutlinedButton.icon(onPressed: () { _openChat(w); }, icon: const Icon(Icons.chat_bubble_outline), label: const Text('Contacter'))),
 							const SizedBox(width: 8),
 							Expanded(child: ElevatedButton.icon(onPressed: () { Navigator.of(context).push(MaterialPageRoute(builder: (_) => const JobCreationScreen())); }, icon: const Icon(Icons.event_available), label: const Text('Réserver'))),
 						]),

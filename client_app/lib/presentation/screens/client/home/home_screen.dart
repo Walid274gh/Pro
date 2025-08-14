@@ -90,7 +90,10 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 														const SizedBox(width: 12),
 														Expanded(
 															child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-																Text(w.fullName, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
+																Row(children: [
+																	Text(w.fullName, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
+																	if (w.isVerified) const Padding(padding: EdgeInsets.only(left: 6), child: Icon(Icons.verified, color: Colors.lightBlue, size: 18)),
+																]),
 																Row(children: [AnimatedRating(rating: w.averageRating), const SizedBox(width: 8), Text(w.distanceKm.toStringAsFixed(1)+' km', style: const TextStyle(color: Colors.white))]),
 															]),
 														),
