@@ -1,0 +1,18 @@
+rules_version = '2';
+service firebase.storage {
+	match /b/{bucket}/o {
+		function isSignedIn() { return request.auth != null; }
+
+		// Job media uploaded by clients
+		match /jobs/{clientId}/{allPaths=**} {
+			allow read: if true; // public preview OK, adjust if needed
+			allow write: if isSignedIn() && request.auth.uid == clientId;
+		}
+
+		// Verification media uploaded by workers
+		match /verifications/{workerId}/{allPaths=**} {
+			allow read: if false; // private
+			allow write: if isSignedIn() && request.auth.uid == workerId;
+		}
+	}
+}
