@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 
 import 'core/themes/app_colors.dart';
+import 'core/themes/app_theme.dart';
 import 'presentation/providers/auth_provider.dart';
 import 'services/auth_service.dart';
 import 'domain/repositories/auth_repository.dart' as domain;
@@ -43,7 +44,7 @@ class MyApp extends StatelessWidget {
 			],
 			child: MaterialApp(
 				title: 'Khidmeti Client',
-				theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: AppColors.coral), useMaterial3: true),
+				theme: AppTheme.light(),
 				home: Consumer<AuthProvider>(
 					builder: (context, auth, _) {
 						if (auth.currentUser == null) return const PhoneAuthScreen();
