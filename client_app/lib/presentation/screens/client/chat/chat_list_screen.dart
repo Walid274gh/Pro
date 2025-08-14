@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../services/chat_service.dart';
 import '../../../providers/auth_provider.dart';
 import 'chat_screen.dart';
+import '../../../widgets/common/empty_state.dart';
 
 class ChatListScreen extends StatelessWidget {
 	const ChatListScreen({super.key});
@@ -20,7 +21,7 @@ class ChatListScreen extends StatelessWidget {
 				builder: (context, snapshot) {
 					if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 					final chats = snapshot.data!;
-					if (chats.isEmpty) return const Center(child: Text('Aucune conversation'));
+					if (chats.isEmpty) return const EmptyState(animationAsset: 'assets/lottie/empty-chat.json', title: 'Aucune conversation');
 					return ListView.separated(
 						itemCount: chats.length,
 						separatorBuilder: (_, __) => const Divider(height: 1),

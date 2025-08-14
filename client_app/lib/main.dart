@@ -17,6 +17,7 @@ import 'domain/repositories/job_repository.dart' as job_domain;
 import 'data/repositories/job_repository_impl.dart' as job_impl;
 import 'services/notification_service.dart';
 import 'presentation/screens/client/shell/bottom_nav_shell.dart';
+import 'localization/app_localizations.dart';
 
 Future<void> main() async {
 	WidgetsFlutterBinding.ensureInitialized();
@@ -45,6 +46,8 @@ class MyApp extends StatelessWidget {
 			child: MaterialApp(
 				title: 'Khidmeti Client',
 				theme: AppTheme.light(),
+				localizationsDelegates: AppLocalizations.localizationsDelegates,
+				supportedLocales: AppLocalizations.supportedLocales,
 				home: Consumer<AuthProvider>(
 					builder: (context, auth, _) {
 						if (auth.currentUser == null) return const PhoneAuthScreen();

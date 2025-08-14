@@ -6,6 +6,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../../domain/entities/job_request.dart';
 import '../chat/chat_screen.dart';
 import '../../../../services/chat_service.dart';
+import '../../../widgets/common/empty_state.dart';
 
 class MyJobsScreen extends StatelessWidget {
 	const MyJobsScreen({super.key});
@@ -19,7 +20,7 @@ class MyJobsScreen extends StatelessWidget {
 			builder: (context, snapshot) {
 				if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 				final jobs = snapshot.data!;
-				if (jobs.isEmpty) return const Center(child: Text('Aucun travail pour le moment'));
+				if (jobs.isEmpty) return const EmptyState(animationAsset: 'assets/lottie/empty-box.json', title: 'Aucun travail');
 				return ListView.separated(
 					padding: const EdgeInsets.all(16),
 					itemCount: jobs.length,
