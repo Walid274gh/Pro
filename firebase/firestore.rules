@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+	match /databases/{database}/documents {
+		function isSignedIn() {
+			return request.auth != null;
+		}
+
+		function isClient(uid) {
+			return exists(/databases/$(database)/documents/clients/$(uid));
+		}
+
+		function isWorker(uid) {
+			return exists(/databases/$(database)/documents/workers/$(uid));
+		}
+
+		// =================== CLIENTS =====================
+		match /clients/{clientId} {
+			allow read: if isSignedIn() && request.auth.uid == clientId;
+			allow create: if isSignedIn() && request.auth.uid == clientId;
+			allow update: if isSignedIn() && request.auth.uid == clientId;
+		}
+
+		// =================== WORKERS =====================
+		match /workers/{workerId} {
+			allow read: if isSignedIn();
+			allow create: if isSignedIn() && request.auth.uid == workerId;
+			// workers can update only their own limited fields (status/location/avatar)
+			allow update: if isSignedIn() && request.auth.uid == workerId &&
+				request.resource.data.diff(resource.data).changedKeys().hasOnly(['isOnline','location','lastSeen','avatarUrl','serviceCategories','nextAvailable']);
+		}
+
+		// =================== JOBS ========================
+		// jobs/{jobId}
+		match /jobs/{jobId} {
+			allow read: if isSignedIn();
+			allow create: if isSignedIn() && isClient(request.auth.uid) && request.resource.data.clientId == request.auth.uid;
+			allow update: if isSignedIn() && isClient(request.auth.uid) && resource.data.clientId == request.auth.uid;
+		}
+
+		// =================== PROPOSALS ===================
+		// proposals/{proposalId}
+		match /proposals/{proposalId} {
+			allow read: if isSignedIn();
+			// Worker creates or updates only own proposal
+			allow create: if isSignedIn() && isWorker(request.auth.uid) && request.resource.data.workerId == request.auth.uid;
+			allow update: if isSignedIn() && isWorker(request.auth.uid) && resource.data.workerId == request.auth.uid;
+		}
+
+		// =================== RATINGS =====================
+		match /ratings/{ratingId} {
+			allow read: if isSignedIn();
+			allow create: if isSignedIn() && isClient(request.auth.uid) && request.resource.data.clientId == request.auth.uid;
+		}
+
+		// =================== VERIFICATIONS ===============
+		match /verifications/{verificationId} {
+			allow read: if false; // only admins via backend
+			allow create: if isSignedIn() && isWorker(request.auth.uid) && request.resource.data.workerId == request.auth.uid;
+		}
+
+		// =================== SUBSCRIPTIONS ===============
+		match /subscriptions/{workerId} {
+			allow read, update, create: if isSignedIn() && request.auth.uid == workerId;
+		}
+	}
+}
