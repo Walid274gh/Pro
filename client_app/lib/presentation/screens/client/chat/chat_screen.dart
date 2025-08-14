@@ -16,6 +16,12 @@ class _ChatScreenState extends State<ChatScreen> {
 	final TextEditingController _text = TextEditingController();
 
 	@override
+	void initState() {
+		super.initState();
+		WidgetsBinding.instance.addPostFrameCallback((_) => _service.markRead(widget.chatId, widget.myId));
+	}
+
+	@override
 	Widget build(BuildContext context) {
 		return Scaffold(
 			appBar: AppBar(title: const Text('Conversation')),
@@ -26,6 +32,8 @@ class _ChatScreenState extends State<ChatScreen> {
 							stream: _service.messages(widget.chatId),
 							builder: (context, snapshot) {
 								final messages = snapshot.data ?? const <ChatMessage>[];
+								// mark read whenever new data arrives
+								if (messages.isNotEmpty) WidgetsBinding.instance.addPostFrameCallback((_) => _service.markRead(widget.chatId, widget.myId));
 								return ListView.builder(
 									reverse: true,
 									itemCount: messages.length,
