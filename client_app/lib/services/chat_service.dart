@@ -26,8 +26,8 @@ class ChatService {
 		final ref = _db.collection('chats').doc();
 		await ref.set({'clientId': clientId, 'workerId': workerId, 'createdAt': FieldValue.serverTimestamp()});
 		// create members sub docs
-		await ref.collection('members').doc(clientId).set({'lastRead': FieldValue.serverTimestamp()});
-		await ref.collection('members').doc(workerId).set({'lastRead': FieldValue.serverTimestamp()});
+		await ref.collection('members').doc(clientId).set({'lastRead': FieldValue.serverTimestamp(), 'typing': false});
+		await ref.collection('members').doc(workerId).set({'lastRead': FieldValue.serverTimestamp(), 'typing': false});
 		return ref.id;
 	}
 
@@ -78,5 +78,20 @@ class ChatService {
 	Future<void> markRead(String chatId, String userId) {
 		final memberRef = _db.collection('chats').doc(chatId).collection('members').doc(userId);
 		return memberRef.set({'lastRead': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+	}
+
+	Future<void> setTyping(String chatId, String userId, bool typing) {
+		final memberRef = _db.collection('chats').doc(chatId).collection('members').doc(userId);
+		return memberRef.set({'typing': typing}, SetOptions(merge: true));
+	}
+
+	Stream<bool> typing(String chatId, String userId) {
+		final memberRef = _db.collection('chats').doc(chatId).collection('members').doc(userId);
+		return memberRef.snapshots().map((s) => (s.data()?['typing'] as bool?) ?? false);
+	}
+
+	Stream<DateTime> lastRead(String chatId, String userId) {
+		final memberRef = _db.collection('chats').doc(chatId).collection('members').doc(userId);
+		return memberRef.snapshots().map((s) => ((s.data()?['lastRead'] as Timestamp?)?.toDate()) ?? DateTime.fromMillisecondsSinceEpoch(0));
 	}
 }

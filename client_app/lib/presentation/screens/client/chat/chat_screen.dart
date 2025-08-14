@@ -59,7 +59,10 @@ class _ChatScreenState extends State<ChatScreen> {
 												margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
 												padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
 												decoration: BoxDecoration(color: isMe ? Colors.blue.shade100 : Colors.grey.shade200, borderRadius: BorderRadius.circular(12)),
-												child: Text(m.text),
+												child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+													Text(m.text),
+													Text(_fmt(m.sentAt), style: const TextStyle(fontSize: 10, color: Colors.black54)),
+												]),
 											),
 										);
 									},
@@ -67,15 +70,25 @@ class _ChatScreenState extends State<ChatScreen> {
 							},
 						),
 					),
+					StreamBuilder<bool>(
+						stream: widget.peerId != null ? _service.typing(widget.chatId, widget.peerId!) : const Stream<bool>.empty(),
+						builder: (_, s) => s.data == true ? const Padding(padding: EdgeInsets.only(bottom: 4), child: Text('L\'artisan est en train d\'écrire...', style: TextStyle(fontSize: 12, color: Colors.black54))) : const SizedBox.shrink(),
+					),
 					Padding(
 						padding: const EdgeInsets.all(8),
 						child: Row(children: [
-							Expanded(child: TextField(controller: _text, decoration: const InputDecoration(hintText: 'Message...'))),
-							IconButton(onPressed: () async { if (_text.text.trim().isEmpty) return; await _service.sendMessage(widget.chatId, widget.myId, _text.text.trim()); _text.clear(); }, icon: const Icon(Icons.send)),
+							Expanded(child: TextField(controller: _text, decoration: const InputDecoration(hintText: 'Message...'), onChanged: (v) { _service.setTyping(widget.chatId, widget.myId, v.isNotEmpty); })),
+							IconButton(onPressed: () async { if (_text.text.trim().isEmpty) return; await _service.setTyping(widget.chatId, widget.myId, false); await _service.sendMessage(widget.chatId, widget.myId, _text.text.trim()); _text.clear(); }, icon: const Icon(Icons.send)),
 						]),
 					),
 				],
 			),
 		);
+	}
+
+	String _fmt(DateTime d) {
+		final h = d.hour.toString().padLeft(2, '0');
+		final m = d.minute.toString().padLeft(2, '0');
+		return h+':'+m;
 	}
 }
