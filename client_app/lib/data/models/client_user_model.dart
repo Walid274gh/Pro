@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../domain/entities/client_user.dart';
 import '../../domain/value_objects/location.dart';
 
@@ -51,6 +52,9 @@ class ClientUserModel extends ClientUser {
 	}
 
 	static DateTime _parseDate(dynamic value) {
+		if (value is Timestamp) {
+			return value.toDate();
+		}
 		if (value is int) {
 			return DateTime.fromMillisecondsSinceEpoch(value);
 		}

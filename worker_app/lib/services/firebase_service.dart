@@ -1,4 +1,7 @@
-// Placeholder wrapper around Firebase SDK instances.
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class FirebaseService {
-	// TODO: provide initialized instances
+	static FirebaseAuth get auth => FirebaseAuth.instance;
+	static FirebaseFirestore get db => FirebaseFirestore.instance;
 }

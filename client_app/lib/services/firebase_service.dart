@@ -1,8 +1,7 @@
-// This is a placeholder abstraction; in a real app we would import Firebase
-// packages and expose initialized instances. Kept here to avoid build issues
-// in this scaffold.
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class FirebaseService {
-	// TODO: wire FirebaseAuth, FirebaseFirestore, FirebaseStorage
-	// Expose getters like `auth`, `firestore`, `storage` once configured.
+	static FirebaseAuth get auth => FirebaseAuth.instance;
+	static FirebaseFirestore get db => FirebaseFirestore.instance;
 }

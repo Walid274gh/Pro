@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../domain/entities/worker.dart';
 import '../../domain/value_objects/location.dart';
 
@@ -70,6 +71,7 @@ class WorkerModel extends Worker {
 	}
 
 	static DateTime _parseDate(dynamic value) {
+		if (value is Timestamp) return value.toDate();
 		if (value is int) {
 			return DateTime.fromMillisecondsSinceEpoch(value);
 		}
