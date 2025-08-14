@@ -6,6 +6,7 @@ import '../../../../domain/value_objects/location.dart';
 import '../../../../core/constants/service_categories.dart';
 import '../../../../domain/repositories/job_repository.dart';
 import '../../../../services/job_service.dart';
+import '../proposal/proposal_form_screen.dart';
 
 class WorkerDashboardScreen extends StatefulWidget {
 	const WorkerDashboardScreen({super.key});
@@ -16,6 +17,7 @@ class WorkerDashboardScreen extends StatefulWidget {
 
 class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
 	final Location _mockLocation = const Location(latitude: 36.7525, longitude: 3.04197);
+	final String _mockWorkerId = 'me';
 
 	@override
 	Widget build(BuildContext context) {
@@ -42,7 +44,12 @@ class _WorkerDashboardScreenState extends State<WorkerDashboardScreen> {
 									Text(j.category.name+' • '+j.distanceKm.toStringAsFixed(1)+' km'),
 									const SizedBox(height: 8),
 									Row(children: [
-										ElevatedButton(onPressed: () {/* navigate to proposal form */}, child: const Text('Proposer')),
+										ElevatedButton(
+											onPressed: () {
+											Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProposalFormScreen(jobId: j.jobId, workerId: _mockWorkerId)));
+										},
+											child: const Text('Proposer'),
+										),
 									]),
 								]),
 							);
