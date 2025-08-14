@@ -33,7 +33,10 @@ class ProposalsScreen extends StatelessWidget {
 								trailing: ElevatedButton(
 									onPressed: () async {
 										await jobService.acceptProposal(jobId, p.workerId);
-										if (context.mounted) Navigator.of(context).pop();
+										if (context.mounted) {
+											ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Proposition acceptée. Ouvrez le chat depuis la carte ou l\'historique.')));
+											Navigator.of(context).pop();
+										}
 									},
 									child: const Text('Accepter'),
 								),

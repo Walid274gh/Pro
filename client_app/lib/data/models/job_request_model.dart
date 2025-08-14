@@ -17,6 +17,7 @@ class JobRequestModel extends JobRequest {
 		required super.clientId,
 		required super.createdAt,
 		super.status = 'open',
+		super.acceptedWorkerId,
 	});
 
 	Map<String, dynamic> toMap() {
@@ -33,6 +34,7 @@ class JobRequestModel extends JobRequest {
 			'clientId': clientId,
 			'createdAt': createdAt.millisecondsSinceEpoch,
 			'status': status,
+			'acceptedWorkerId': acceptedWorkerId,
 		};
 	}
 
@@ -50,6 +52,7 @@ class JobRequestModel extends JobRequest {
 			clientId: map['clientId'] as String,
 			createdAt: _parseDate(map['createdAt']),
 			status: map['status'] as String? ?? 'open',
+			acceptedWorkerId: map['acceptedWorkerId'] as String?,
 		);
 	}
 

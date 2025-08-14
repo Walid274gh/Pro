@@ -15,6 +15,7 @@ class JobRequest {
 	final String clientId;
 	final DateTime createdAt;
 	final String status; // draft, open, accepted, completed, canceled
+	final String? acceptedWorkerId;
 
 	const JobRequest({
 		required this.id,
@@ -29,6 +30,7 @@ class JobRequest {
 		required this.clientId,
 		required this.createdAt,
 		this.status = 'open',
+		this.acceptedWorkerId,
 	});
 
 	JobRequest copyWith({
@@ -44,6 +46,7 @@ class JobRequest {
 		String? clientId,
 		DateTime? createdAt,
 		String? status,
+		String? acceptedWorkerId,
 	}) {
 		return JobRequest(
 			id: id ?? this.id,
@@ -58,6 +61,7 @@ class JobRequest {
 			clientId: clientId ?? this.clientId,
 			createdAt: createdAt ?? this.createdAt,
 			status: status ?? this.status,
+			acceptedWorkerId: acceptedWorkerId ?? this.acceptedWorkerId,
 		);
 	}
 
@@ -75,6 +79,7 @@ class JobRequest {
 		clientId,
 		createdAt,
 		status,
+		acceptedWorkerId,
 	);
 
 	@override
@@ -91,7 +96,8 @@ class JobRequest {
 			other.budgetMax == budgetMax &&
 			other.clientId == clientId &&
 			other.createdAt == createdAt &&
-			other.status == status;
+			other.status == status &&
+			other.acceptedWorkerId == acceptedWorkerId;
 	}
 
 	static bool _listEquals(List<String> a, List<String> b) {
