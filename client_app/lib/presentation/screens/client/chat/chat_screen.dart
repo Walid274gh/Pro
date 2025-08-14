@@ -5,7 +5,11 @@ import '../../../../services/chat_service.dart';
 class ChatScreen extends StatefulWidget {
 	final String chatId;
 	final String myId;
-	const ChatScreen({super.key, required this.chatId, required this.myId});
+	final String? peerId;
+	final String? peerName;
+	final String? peerAvatarUrl;
+	final String? heroTag;
+	const ChatScreen({super.key, required this.chatId, required this.myId, this.peerId, this.peerName, this.peerAvatarUrl, this.heroTag});
 
 	@override
 	State<ChatScreen> createState() => _ChatScreenState();
@@ -24,7 +28,17 @@ class _ChatScreenState extends State<ChatScreen> {
 	@override
 	Widget build(BuildContext context) {
 		return Scaffold(
-			appBar: AppBar(title: const Text('Conversation')),
+			appBar: AppBar(
+				title: Row(children: [
+					if (widget.heroTag != null)
+						Hero(
+							tag: widget.heroTag!,
+							child: CircleAvatar(radius: 14, backgroundImage: widget.peerAvatarUrl != null ? NetworkImage(widget.peerAvatarUrl!) : null, child: widget.peerAvatarUrl == null ? const Icon(Icons.person, size: 16) : null),
+						),
+					if (widget.heroTag != null) const SizedBox(width: 8),
+					Text(widget.peerName ?? 'Conversation'),
+				]),
+			),
 			body: Column(
 				children: [
 					Expanded(
@@ -32,7 +46,6 @@ class _ChatScreenState extends State<ChatScreen> {
 							stream: _service.messages(widget.chatId),
 							builder: (context, snapshot) {
 								final messages = snapshot.data ?? const <ChatMessage>[];
-								// mark read whenever new data arrives
 								if (messages.isNotEmpty) WidgetsBinding.instance.addPostFrameCallback((_) => _service.markRead(widget.chatId, widget.myId));
 								return ListView.builder(
 									reverse: true,
