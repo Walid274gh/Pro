@@ -8,6 +8,8 @@ import '../../../../core/constants/service_categories.dart';
 import '../../../../services/location_service.dart';
 import '../jobs/job_creation_screen.dart';
 import '../map/map_screen.dart';
+import '../../../widgets/common/animated_rating.dart';
+import '../../../widgets/common/gradient_card.dart';
 
 class ClientHomeScreen extends StatefulWidget {
 	const ClientHomeScreen({super.key});
@@ -81,17 +83,15 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 										separatorBuilder: (_, __) => const SizedBox(height: 12),
 										itemBuilder: (context, index) {
 											final w = workers[index];
-											return Container(
-												decoration: BoxDecoration(color: AppColors.white, borderRadius: BorderRadius.circular(16), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4))]),
-												padding: const EdgeInsets.all(16),
+											return GradientCard(
 												child: Row(
 													children: [
 														CircleAvatar(radius: 24, backgroundImage: w.avatarUrl != null ? NetworkImage(w.avatarUrl!) : null, child: w.avatarUrl == null ? const Icon(Icons.person) : null),
 														const SizedBox(width: 12),
 														Expanded(
 															child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-																Text(w.fullName, style: const TextStyle(fontWeight: FontWeight.w600)),
-																Text(w.distanceKm.toStringAsFixed(1)+' km • '+w.averageRating.toStringAsFixed(1)+'★'),
+																Text(w.fullName, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.white)),
+																Row(children: [AnimatedRating(rating: w.averageRating), const SizedBox(width: 8), Text(w.distanceKm.toStringAsFixed(1)+' km', style: const TextStyle(color: Colors.white))]),
 															]),
 														),
 														ElevatedButton(onPressed: () {}, child: const Text('Réserver')),
