@@ -13,6 +13,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Palette Paytone One
 const Color kPrimaryYellow = Color(0xFFFCDC73);
@@ -122,6 +123,8 @@ class KhidmetiApp extends StatelessWidget {
 					'/map': (context) => const MapScreen(),
 					'/requests': (context) => const PlaceholderScreen(title: 'Demandes'),
 					'/profile': (context) => const PlaceholderScreen(title: 'Profil'),
+					'/analytics': (context) => const AnalyticsDashboardScreen(),
+					'/settings': (context) => const SettingsScreen(),
 				},
 		);
 	}
@@ -2176,5 +2179,606 @@ class _PaymentModalState extends State<PaymentModal> {
 				SnackBar(content: Text('Erreur: ${e.toString()}')),
 			);
 		}
+	}
+}
+
+// Analytics and user insights
+class UserAnalyticsService {
+	final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+	
+	Stream<Map<String, dynamic>> getUserAnalytics(String userId) {
+		return _firestore
+			.collection('requests')
+			.where('userId', isEqualTo: userId)
+			.snapshots()
+			.map((snapshot) {
+				int totalRequests = 0;
+				int completedRequests = 0;
+				int pendingRequests = 0;
+				double totalSpent = 0;
+				Map<String, int> serviceUsage = {};
+				
+				for (final doc in snapshot.docs) {
+					final data = doc.data();
+					totalRequests++;
+					
+					final status = data['status'] as String? ?? 'pending';
+					if (status == 'completed') {
+						completedRequests++;
+						totalSpent += (data['finalPrice'] ?? 0).toDouble();
+					} else if (status == 'pending') {
+						pendingRequests++;
+					}
+					
+					final serviceType = data['serviceType'] as String? ?? 'Unknown';
+					serviceUsage[serviceType] = (serviceUsage[serviceType] ?? 0) + 1;
+				}
+				
+				return {
+					'totalRequests': totalRequests,
+					'completedRequests': completedRequests,
+					'pendingRequests': pendingRequests,
+					'totalSpent': totalSpent,
+					'serviceUsage': serviceUsage,
+					'completionRate': totalRequests > 0 ? (completedRequests / totalRequests * 100) : 0,
+				};
+			});
+	}
+	
+	Future<void> trackUserAction(String userId, String action, Map<String, dynamic> data) async {
+		await _firestore.collection('user_analytics').add({
+			'userId': userId,
+			'action': action,
+			'data': data,
+			'timestamp': FieldValue.serverTimestamp(),
+		});
+	}
+}
+
+// Advanced notification system
+class AdvancedNotificationService {
+	final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+	final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+	
+	Future<void> initialize() async {
+		// Request permissions
+		final settings = await _messaging.requestPermission(
+			alert: true,
+			badge: true,
+			sound: true,
+		);
+		
+		if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+			// Get FCM token
+			final token = await _messaging.getToken();
+			if (token != null) {
+				await _saveTokenToDatabase(token);
+			}
+			
+			// Listen for token refresh
+			_messaging.onTokenRefresh.listen(_saveTokenToDatabase);
+			
+			// Handle foreground messages
+			FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+			
+			// Handle background messages
+			FirebaseMessaging.onBackgroundMessage(_handleBackgroundMessage);
+			
+			// Handle notification taps
+			FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
+		}
+	}
+	
+	Future<void> _saveTokenToDatabase(String token) async {
+		final user = fb_auth.FirebaseAuth.instance.currentUser;
+		if (user != null) {
+			await _firestore.collection('users').doc(user.uid).update({
+				'fcmToken': token,
+				'lastTokenUpdate': FieldValue.serverTimestamp(),
+			});
+		}
+	}
+	
+	void _handleForegroundMessage(RemoteMessage message) {
+		// Show local notification
+		_showLocalNotification(
+			title: message.notification?.title ?? 'Nouvelle notification',
+			body: message.notification?.body ?? '',
+			data: message.data,
+		);
+	}
+	
+	void _handleNotificationTap(RemoteMessage message) {
+		// Handle navigation based on notification data
+		final data = message.data;
+		if (data['type'] == 'new_request') {
+			// Navigate to requests screen
+		} else if (data['type'] == 'chat_message') {
+			// Navigate to chat screen
+		}
+	}
+	
+	void _showLocalNotification({
+		required String title,
+		required String body,
+		Map<String, dynamic>? data,
+	}) {
+		// Implementation would use flutter_local_notifications
+		print('Local notification: $title - $body');
+	}
+}
+
+// User preferences and settings
+class UserPreferencesService {
+	final SharedPreferences _prefs;
+	
+	UserPreferencesService(this._prefs);
+	
+	static Future<UserPreferencesService> create() async {
+		final prefs = await SharedPreferences.getInstance();
+		return UserPreferencesService(prefs);
+	}
+	
+	// Notification preferences
+	bool get notificationsEnabled => _prefs.getBool('notifications_enabled') ?? true;
+	set notificationsEnabled(bool value) => _prefs.setBool('notifications_enabled', value);
+	
+	bool get chatNotificationsEnabled => _prefs.getBool('chat_notifications_enabled') ?? true;
+	set chatNotificationsEnabled(bool value) => _prefs.setBool('chat_notifications_enabled', value);
+	
+	bool get requestUpdatesEnabled => _prefs.getBool('request_updates_enabled') ?? true;
+	set requestUpdatesEnabled(bool value) => _prefs.setBool('request_updates_enabled', value);
+	
+	// UI preferences
+	bool get darkModeEnabled => _prefs.getBool('dark_mode_enabled') ?? false;
+	set darkModeEnabled(bool value) => _prefs.setBool('dark_mode_enabled', value);
+	
+	String get selectedLanguage => _prefs.getString('selected_language') ?? 'fr';
+	set selectedLanguage(String value) => _prefs.setString('selected_language', value);
+	
+	// Location preferences
+	double get searchRadius => _prefs.getDouble('search_radius') ?? 10.0;
+	set searchRadius(double value) => _prefs.setDouble('search_radius', value);
+	
+	// Payment preferences
+	String get defaultPaymentMethod => _prefs.getString('default_payment_method') ?? 'baridiMob';
+	set defaultPaymentMethod(String value) => _prefs.setString('default_payment_method', value);
+}
+
+// Analytics dashboard screen
+class AnalyticsDashboardScreen extends StatelessWidget {
+	const AnalyticsDashboardScreen({super.key});
+	@override
+	Widget build(BuildContext context) {
+		final user = fb_auth.FirebaseAuth.instance.currentUser;
+		if (user == null) return const SizedBox.shrink();
+		
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: SafeArea(
+				child: Column(
+					children: [
+						const ModernHeader(title: 'Analytics', showBackButton: true),
+						Expanded(
+							child: StreamBuilder<Map<String, dynamic>>(
+								stream: UserAnalyticsService().getUserAnalytics(user.uid),
+								builder: (context, snapshot) {
+									if (!snapshot.hasData) {
+										return const Center(child: CircularProgressIndicator());
+									}
+									
+									final analytics = snapshot.data!;
+									
+									return SingleChildScrollView(
+										padding: const EdgeInsets.all(16),
+										child: Column(
+											children: [
+												// Summary cards
+												Row(
+													children: [
+														Expanded(
+															child: _AnalyticsCard(
+																title: 'Total demandes',
+																value: '${analytics['totalRequests']}',
+																icon: Icons.assignment,
+																color: kPrimaryTeal,
+															),
+														),
+														const SizedBox(width: 12),
+														Expanded(
+															child: _AnalyticsCard(
+																title: 'Complétées',
+																value: '${analytics['completedRequests']}',
+																icon: Icons.check_circle,
+																color: kSuccessColor,
+															),
+														),
+													],
+												),
+												const SizedBox(height: 12),
+												Row(
+													children: [
+														Expanded(
+															child: _AnalyticsCard(
+																title: 'En attente',
+																value: '${analytics['pendingRequests']}',
+																icon: Icons.pending,
+																color: kPrimaryYellow,
+															),
+														),
+														const SizedBox(width: 12),
+														Expanded(
+															child: _AnalyticsCard(
+																title: 'Total dépensé',
+																value: '${analytics['totalSpent'].toStringAsFixed(0)} DZD',
+																icon: Icons.payments,
+																color: kPrimaryDark,
+															),
+														),
+													],
+												),
+												const SizedBox(height: 24),
+												// Service usage chart
+												Container(
+													padding: const EdgeInsets.all(16),
+													decoration: BoxDecoration(
+														color: kSurfaceColor,
+														borderRadius: BorderRadius.circular(16),
+														boxShadow: [
+															BoxShadow(
+																color: kPrimaryDark.withOpacity(0.06),
+																offset: const Offset(0, 8),
+																blurRadius: 24,
+															),
+														],
+													),
+													child: Column(
+														crossAxisAlignment: CrossAxisAlignment.start,
+														children: [
+															Text('Utilisation des services', style: kSubheadingStyle),
+															const SizedBox(height: 16),
+															...analytics['serviceUsage'].entries.map((entry) {
+																return Padding(
+																	padding: const EdgeInsets.only(bottom: 8),
+																	child: Row(
+																		children: [
+																			Expanded(
+																				flex: 2,
+																				child: Text(entry.key, style: kBodyStyle),
+																			),
+																			Expanded(
+																				flex: 3,
+																				child: LinearProgressIndicator(
+																					value: entry.value / analytics['totalRequests'],
+																					backgroundColor: kPrimaryDark.withOpacity(0.1),
+																					valueColor: AlwaysStoppedAnimation<Color>(kPrimaryTeal),
+																				),
+																			),
+																			const SizedBox(width: 8),
+																			Text('${entry.value}', style: kBodyStyle.copyWith(fontWeight: FontWeight.w600)),
+																		],
+																	),
+																);
+															}).toList(),
+														],
+													),
+												),
+											],
+										),
+									);
+								},
+							),
+						),
+					],
+				),
+			),
+		);
+	}
+}
+
+class _AnalyticsCard extends StatelessWidget {
+	final String title;
+	final String value;
+	final IconData icon;
+	final Color color;
+	
+	const _AnalyticsCard({
+		required this.title,
+		required this.value,
+		required this.icon,
+		required this.color,
+	});
+	
+	@override
+	Widget build(BuildContext context) {
+		return Container(
+			padding: const EdgeInsets.all(16),
+			decoration: BoxDecoration(
+				color: kSurfaceColor,
+				borderRadius: BorderRadius.circular(16),
+				boxShadow: [
+					BoxShadow(
+						color: kPrimaryDark.withOpacity(0.06),
+						offset: const Offset(0, 8),
+						blurRadius: 24,
+					),
+				],
+			),
+			child: Column(
+				crossAxisAlignment: CrossAxisAlignment.start,
+				children: [
+					Row(
+						children: [
+							Icon(icon, color: color, size: 20),
+							const SizedBox(width: 8),
+							Text(title, style: kBodyStyle.copyWith(fontSize: 12)),
+						],
+					),
+					const SizedBox(height: 8),
+					Text(value, style: kHeadingStyle.copyWith(fontSize: 18, color: color)),
+				],
+			),
+		);
+	}
+}
+
+// Settings screen
+class SettingsScreen extends StatefulWidget {
+	const SettingsScreen({super.key});
+	@override
+	State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+	late UserPreferencesService _prefs;
+	bool _isLoading = true;
+	
+	@override
+	void initState() {
+		super.initState();
+		_initializePreferences();
+	}
+	
+	Future<void> _initializePreferences() async {
+		_prefs = await UserPreferencesService.create();
+		setState(() => _isLoading = false);
+	}
+	
+	@override
+	Widget build(BuildContext context) {
+		if (_isLoading) {
+			return const Scaffold(
+				backgroundColor: kBackgroundColor,
+				body: Center(child: CircularProgressIndicator()),
+			);
+		}
+		
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: SafeArea(
+				child: Column(
+					children: [
+						const ModernHeader(title: 'Paramètres', showBackButton: true),
+						Expanded(
+							child: ListView(
+								padding: const EdgeInsets.all(16),
+								children: [
+									// Notifications section
+									_SettingSection(
+										title: 'Notifications',
+										children: [
+											_SwitchSetting(
+												title: 'Notifications générales',
+												value: _prefs.notificationsEnabled,
+												onChanged: (value) {
+													setState(() => _prefs.notificationsEnabled = value);
+												},
+											),
+											_SwitchSetting(
+												title: 'Messages de chat',
+												value: _prefs.chatNotificationsEnabled,
+												onChanged: (value) {
+													setState(() => _prefs.chatNotificationsEnabled = value);
+												},
+											),
+											_SwitchSetting(
+												title: 'Mises à jour des demandes',
+												value: _prefs.requestUpdatesEnabled,
+												onChanged: (value) {
+													setState(() => _prefs.requestUpdatesEnabled = value);
+												},
+											),
+										],
+									),
+									const SizedBox(height: 24),
+									// UI section
+									_SettingSection(
+										title: 'Interface',
+										children: [
+											_SwitchSetting(
+												title: 'Mode sombre',
+												value: _prefs.darkModeEnabled,
+												onChanged: (value) {
+													setState(() => _prefs.darkModeEnabled = value);
+												},
+											),
+											_ListSetting(
+												title: 'Langue',
+												value: _prefs.selectedLanguage == 'fr' ? 'Français' : 'English',
+												onTap: () {
+													// Show language picker
+												},
+											),
+										],
+									),
+									const SizedBox(height: 24),
+									// Location section
+									_SettingSection(
+										title: 'Localisation',
+										children: [
+											_SliderSetting(
+												title: 'Rayon de recherche',
+												value: _prefs.searchRadius,
+												min: 1.0,
+												max: 50.0,
+												divisions: 49,
+												label: '${_prefs.searchRadius.toStringAsFixed(1)} km',
+												onChanged: (value) {
+													setState(() => _prefs.searchRadius = value);
+												},
+											),
+										],
+									),
+									const SizedBox(height: 24),
+									// Payment section
+									_SettingSection(
+										title: 'Paiement',
+										children: [
+											_ListSetting(
+												title: 'Méthode par défaut',
+												value: _prefs.defaultPaymentMethod == 'baridiMob' ? 'BaridiMob' : 'Carte bancaire',
+												onTap: () {
+													// Show payment method picker
+												},
+											),
+										],
+									),
+								],
+							),
+						),
+					],
+				),
+			),
+		);
+	}
+}
+
+class _SettingSection extends StatelessWidget {
+	final String title;
+	final List<Widget> children;
+	
+	const _SettingSection({required this.title, required this.children});
+	
+	@override
+	Widget build(BuildContext context) {
+		return Container(
+			decoration: BoxDecoration(
+				color: kSurfaceColor,
+				borderRadius: BorderRadius.circular(16),
+				boxShadow: [
+					BoxShadow(
+						color: kPrimaryDark.withOpacity(0.06),
+						offset: const Offset(0, 8),
+						blurRadius: 24,
+					),
+				],
+			),
+			child: Column(
+				crossAxisAlignment: CrossAxisAlignment.start,
+				children: [
+					Padding(
+						padding: const EdgeInsets.all(16),
+						child: Text(title, style: kSubheadingStyle),
+					),
+					...children,
+				],
+			),
+		);
+	}
+}
+
+class _SwitchSetting extends StatelessWidget {
+	final String title;
+	final bool value;
+	final ValueChanged<bool> onChanged;
+	
+	const _SwitchSetting({
+		required this.title,
+		required this.value,
+		required this.onChanged,
+	});
+	
+	@override
+	Widget build(BuildContext context) {
+		return ListTile(
+			title: Text(title, style: kBodyStyle),
+			trailing: Switch(
+				value: value,
+				onChanged: onChanged,
+				activeColor: kPrimaryTeal,
+			),
+		);
+	}
+}
+
+class _ListSetting extends StatelessWidget {
+	final String title;
+	final String value;
+	final VoidCallback onTap;
+	
+	const _ListSetting({
+		required this.title,
+		required this.value,
+		required this.onTap,
+	});
+	
+	@override
+	Widget build(BuildContext context) {
+		return ListTile(
+			title: Text(title, style: kBodyStyle),
+			trailing: Row(
+				mainAxisSize: MainAxisSize.min,
+				children: [
+					Text(value, style: kBodyStyle.copyWith(color: kSubtitleColor)),
+					const Icon(Icons.chevron_right, color: kSubtitleColor),
+				],
+			),
+			onTap: onTap,
+		);
+	}
+}
+
+class _SliderSetting extends StatelessWidget {
+	final String title;
+	final double value;
+	final double min;
+	final double max;
+	final int divisions;
+	final String label;
+	final ValueChanged<double> onChanged;
+	
+	const _SliderSetting({
+		required this.title,
+		required this.value,
+		required this.min,
+		required this.max,
+		required this.divisions,
+		required this.label,
+		required this.onChanged,
+	});
+	
+	@override
+	Widget build(BuildContext context) {
+		return Column(
+			crossAxisAlignment: CrossAxisAlignment.start,
+			children: [
+				ListTile(
+					title: Text(title, style: kBodyStyle),
+					trailing: Text(label, style: kBodyStyle.copyWith(color: kPrimaryTeal)),
+				),
+				Padding(
+					padding: const EdgeInsets.symmetric(horizontal: 16),
+					child: Slider(
+						value: value,
+						min: min,
+						max: max,
+						divisions: divisions,
+						onChanged: onChanged,
+						activeColor: kPrimaryTeal,
+						inactiveColor: kPrimaryDark.withOpacity(0.2),
+					),
+				),
+			],
+		);
 	}
 }

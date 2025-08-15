@@ -672,6 +672,176 @@ class PortfolioService {
 	}
 }
 
+// Worker performance analytics
+class WorkerPerformanceService {
+	final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+	
+	Stream<Map<String, dynamic>> getWorkerPerformance(String workerId) {
+		return _firestore
+			.collection('requests')
+			.where('workerId', isEqualTo: workerId)
+			.snapshots()
+			.map((snapshot) {
+				int totalJobs = 0;
+				int completedJobs = 0;
+				int cancelledJobs = 0;
+				double totalEarnings = 0;
+				double averageRating = 0;
+				int totalReviews = 0;
+				Map<String, int> serviceBreakdown = {};
+				List<double> responseTimes = [];
+				
+				for (final doc in snapshot.docs) {
+					final data = doc.data();
+					totalJobs++;
+					
+					final status = data['status'] as String? ?? 'pending';
+					if (status == 'completed') {
+						completedJobs++;
+						totalEarnings += (data['finalPrice'] ?? 0).toDouble();
+					} else if (status == 'cancelled') {
+						cancelledJobs++;
+					}
+					
+					final serviceType = data['serviceType'] as String? ?? 'Unknown';
+					serviceBreakdown[serviceType] = (serviceBreakdown[serviceType] ?? 0) + 1;
+					
+					// Calculate response time
+					final createdAt = data['createdAt'] as Timestamp?;
+					final acceptedAt = data['acceptedAt'] as Timestamp?;
+					if (createdAt != null && acceptedAt != null) {
+						final responseTime = acceptedAt.toDate().difference(createdAt.toDate()).inMinutes;
+						responseTimes.add(responseTime.toDouble());
+					}
+				}
+				
+				// Calculate average response time
+				final avgResponseTime = responseTimes.isNotEmpty 
+					? responseTimes.reduce((a, b) => a + b) / responseTimes.length 
+					: 0.0;
+				
+				return {
+					'totalJobs': totalJobs,
+					'completedJobs': completedJobs,
+					'cancelledJobs': cancelledJobs,
+					'totalEarnings': totalEarnings,
+					'averageRating': averageRating,
+					'totalReviews': totalReviews,
+					'serviceBreakdown': serviceBreakdown,
+					'averageResponseTime': avgResponseTime,
+					'completionRate': totalJobs > 0 ? (completedJobs / totalJobs * 100) : 0,
+					'cancellationRate': totalJobs > 0 ? (cancelledJobs / totalJobs * 100) : 0,
+				};
+			});
+	}
+	
+	Future<void> trackWorkerAction(String workerId, String action, Map<String, dynamic> data) async {
+		await _firestore.collection('worker_analytics').add({
+			'workerId': workerId,
+			'action': action,
+			'data': data,
+			'timestamp': FieldValue.serverTimestamp(),
+		});
+	}
+}
+
+// Schedule management system
+class ScheduleManagementService {
+	final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+	
+	Future<void> setAvailability({
+		required String workerId,
+		required Map<String, List<Map<String, dynamic>>> weeklySchedule,
+	}) async {
+		await _firestore.collection('worker_schedules').doc(workerId).set({
+			'workerId': workerId,
+			'weeklySchedule': weeklySchedule,
+			'updatedAt': FieldValue.serverTimestamp(),
+		});
+	}
+	
+	Stream<Map<String, dynamic>?> getWorkerSchedule(String workerId) {
+		return _firestore
+			.collection('worker_schedules')
+			.doc(workerId)
+			.snapshots()
+			.map((doc) => doc.data());
+	}
+	
+	Future<void> addTimeOff({
+		required String workerId,
+		required DateTime startDate,
+		required DateTime endDate,
+		required String reason,
+	}) async {
+		await _firestore.collection('worker_time_off').add({
+			'workerId': workerId,
+			'startDate': startDate,
+			'endDate': endDate,
+			'reason': reason,
+			'status': 'pending',
+			'createdAt': FieldValue.serverTimestamp(),
+		});
+	}
+}
+
+// Professional tools and utilities
+class ProfessionalToolsService {
+	final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+	
+	Future<void> createInvoice({
+		required String workerId,
+		required String requestId,
+		required double amount,
+		required String description,
+		List<String> items = const [],
+	}) async {
+		final invoiceId = _firestore.collection('invoices').doc().id;
+		await _firestore.collection('invoices').doc(invoiceId).set({
+			'invoiceId': invoiceId,
+			'workerId': workerId,
+			'requestId': requestId,
+			'amount': amount,
+			'description': description,
+			'items': items,
+			'status': 'pending',
+			'createdAt': FieldValue.serverTimestamp(),
+			'paidAt': null,
+		});
+	}
+	
+	Future<void> createQuote({
+		required String workerId,
+		required String requestId,
+		required double estimatedAmount,
+		required String description,
+		required DateTime validUntil,
+		List<String> services = const [],
+	}) async {
+		final quoteId = _firestore.collection('quotes').doc().id;
+		await _firestore.collection('quotes').doc(quoteId).set({
+			'quoteId': quoteId,
+			'workerId': workerId,
+			'requestId': requestId,
+			'estimatedAmount': estimatedAmount,
+			'description': description,
+			'services': services,
+			'validUntil': validUntil,
+			'status': 'pending',
+			'createdAt': FieldValue.serverTimestamp(),
+		});
+	}
+	
+	Stream<List<Map<String, dynamic>>> getWorkerInvoices(String workerId) {
+		return _firestore
+			.collection('invoices')
+			.where('workerId', isEqualTo: workerId)
+			.orderBy('createdAt', descending: true)
+			.snapshots()
+			.map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
+	}
+}
+
 // Enhanced dashboard with real-time data
 class EnhancedDashboardScreen extends StatelessWidget {
 	const EnhancedDashboardScreen({super.key});
@@ -1053,6 +1223,293 @@ class WorkersProfileScreen extends StatelessWidget {
 							icon: const Icon(Icons.logout),
 							label: const Text('Se déconnecter'),
 							style: FilledButton.styleFrom(backgroundColor: kPrimaryRed),
+						),
+					],
+				),
+			),
+		);
+	}
+}
+
+// Enhanced performance dashboard
+class WorkerPerformanceDashboard extends StatelessWidget {
+	const WorkerPerformanceDashboard({super.key});
+	@override
+	Widget build(BuildContext context) {
+		final user = fb_auth.FirebaseAuth.instance.currentUser;
+		if (user == null) return const SizedBox.shrink();
+		
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: SafeArea(
+				child: Column(
+					children: [
+						const ModernHeader(title: 'Performance', showBackButton: true),
+						Expanded(
+							child: StreamBuilder<Map<String, dynamic>>(
+								stream: WorkerPerformanceService().getWorkerPerformance(user.uid),
+								builder: (context, snapshot) {
+									if (!snapshot.hasData) {
+										return const Center(child: CircularProgressIndicator());
+									}
+									
+									final performance = snapshot.data!;
+									
+									return SingleChildScrollView(
+										padding: const EdgeInsets.all(16),
+										child: Column(
+											children: [
+												// Performance metrics
+												Row(
+													children: [
+														Expanded(
+															child: _PerformanceCard(
+																title: 'Taux de complétion',
+																value: '${performance['completionRate'].toStringAsFixed(1)}%',
+																icon: Icons.check_circle,
+																color: kSuccessColor,
+															),
+														),
+														const SizedBox(width: 12),
+														Expanded(
+															child: _PerformanceCard(
+																title: 'Temps de réponse',
+																value: '${performance['averageResponseTime'].toStringAsFixed(0)} min',
+																icon: Icons.schedule,
+																color: kPrimaryTeal,
+															),
+														),
+													],
+												),
+												const SizedBox(height: 12),
+												Row(
+													children: [
+														Expanded(
+															child: _PerformanceCard(
+																title: 'Jobs complétés',
+																value: '${performance['completedJobs']}',
+																icon: Icons.work,
+																color: kPrimaryDark,
+															),
+														),
+														const SizedBox(width: 12),
+														Expanded(
+															child: _PerformanceCard(
+																title: 'Annulations',
+																value: '${performance['cancelledJobs']}',
+																icon: Icons.cancel,
+																color: kPrimaryRed,
+															),
+														),
+													],
+												),
+												const SizedBox(height: 24),
+												// Service breakdown
+												Container(
+													padding: const EdgeInsets.all(16),
+													decoration: BoxDecoration(
+														color: kSurfaceColor,
+														borderRadius: BorderRadius.circular(16),
+														boxShadow: [
+															BoxShadow(
+																color: kPrimaryDark.withOpacity(0.06),
+																offset: const Offset(0, 8),
+																blurRadius: 24,
+															),
+														],
+													),
+													child: Column(
+														crossAxisAlignment: CrossAxisAlignment.start,
+														children: [
+															Text('Répartition des services', style: kSubheadingStyle),
+															const SizedBox(height: 16),
+															...performance['serviceBreakdown'].entries.map((entry) {
+																return Padding(
+																	padding: const EdgeInsets.only(bottom: 8),
+																	child: Row(
+																		children: [
+																			Expanded(
+																				flex: 2,
+																				child: Text(entry.key, style: kBodyStyle),
+																			),
+																			Expanded(
+																				flex: 3,
+																				child: LinearProgressIndicator(
+																					value: entry.value / performance['totalJobs'],
+																					backgroundColor: kPrimaryDark.withOpacity(0.1),
+																					valueColor: AlwaysStoppedAnimation<Color>(kPrimaryTeal),
+																				),
+																			),
+																			const SizedBox(width: 8),
+																			Text('${entry.value}', style: kBodyStyle.copyWith(fontWeight: FontWeight.w600)),
+																		],
+																	),
+																);
+															}).toList(),
+														],
+													),
+												),
+												const SizedBox(height: 24),
+												// Professional tools
+												Container(
+													padding: const EdgeInsets.all(16),
+													decoration: BoxDecoration(
+														color: kSurfaceColor,
+														borderRadius: BorderRadius.circular(16),
+														boxShadow: [
+															BoxShadow(
+																color: kPrimaryDark.withOpacity(0.06),
+																offset: const Offset(0, 8),
+																blurRadius: 24,
+															),
+														],
+													),
+													child: Column(
+														crossAxisAlignment: CrossAxisAlignment.start,
+														children: [
+															Text('Outils professionnels', style: kSubheadingStyle),
+															const SizedBox(height: 16),
+															Row(
+																children: [
+																	Expanded(
+																		child: _ToolButton(
+																			icon: Icons.receipt,
+																			label: 'Factures',
+																			onTap: () {},
+																			color: kPrimaryTeal,
+																		),
+																	),
+																	const SizedBox(width: 12),
+																	Expanded(
+																		child: _ToolButton(
+																			icon: Icons.assessment,
+																			label: 'Devis',
+																			onTap: () {},
+																			color: kPrimaryDark,
+																		),
+																	),
+																],
+															),
+															const SizedBox(height: 12),
+															Row(
+																children: [
+																	Expanded(
+																		child: _ToolButton(
+																			icon: Icons.calendar_today,
+																			label: 'Planning',
+																			onTap: () {},
+																			color: kPrimaryYellow,
+																		),
+																	),
+																	const SizedBox(width: 12),
+																	Expanded(
+																		child: _ToolButton(
+																			icon: Icons.analytics,
+																			label: 'Rapports',
+																			onTap: () {},
+																			color: kPrimaryRed,
+																		),
+																	),
+																],
+															),
+														],
+													),
+												),
+											],
+										),
+									);
+								},
+							),
+						),
+					],
+				),
+			),
+		);
+	}
+}
+
+class _PerformanceCard extends StatelessWidget {
+	final String title;
+	final String value;
+	final IconData icon;
+	final Color color;
+	
+	const _PerformanceCard({
+		required this.title,
+		required this.value,
+		required this.icon,
+		required this.color,
+	});
+	
+	@override
+	Widget build(BuildContext context) {
+		return Container(
+			padding: const EdgeInsets.all(16),
+			decoration: BoxDecoration(
+				color: kSurfaceColor,
+				borderRadius: BorderRadius.circular(16),
+				boxShadow: [
+					BoxShadow(
+						color: kPrimaryDark.withOpacity(0.06),
+						offset: const Offset(0, 8),
+						blurRadius: 24,
+					),
+				],
+			),
+			child: Column(
+				crossAxisAlignment: CrossAxisAlignment.start,
+				children: [
+					Row(
+						children: [
+							Icon(icon, color: color, size: 20),
+							const SizedBox(width: 8),
+							Text(title, style: kBodyStyle.copyWith(fontSize: 12)),
+						],
+					),
+					const SizedBox(height: 8),
+					Text(value, style: kHeadingStyle.copyWith(fontSize: 18, color: color)),
+				],
+			),
+		);
+	}
+}
+
+class _ToolButton extends StatelessWidget {
+	final IconData icon;
+	final String label;
+	final VoidCallback onTap;
+	final Color color;
+	
+	const _ToolButton({
+		required this.icon,
+		required this.label,
+		required this.onTap,
+		required this.color,
+	});
+	
+	@override
+	Widget build(BuildContext context) {
+		return GestureDetector(
+			onTap: onTap,
+			child: Container(
+				padding: const EdgeInsets.all(16),
+				decoration: BoxDecoration(
+					color: color.withOpacity(0.1),
+					borderRadius: BorderRadius.circular(12),
+					border: Border.all(color: color.withOpacity(0.3)),
+				),
+				child: Column(
+					children: [
+						Icon(icon, color: color, size: 24),
+						const SizedBox(height: 8),
+						Text(
+							label,
+							style: TextStyle(
+								color: color,
+								fontSize: 12,
+								fontWeight: FontWeight.w600,
+							),
+							textAlign: TextAlign.center,
 						),
 					],
 				),
