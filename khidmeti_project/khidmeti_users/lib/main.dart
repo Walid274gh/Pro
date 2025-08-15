@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart' as fb_storage;
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'dart:io';
 
 // Palette Paytone One
@@ -62,7 +63,21 @@ const bool SOLID_ARCHITECTURE = true;
 const bool LOTTIE_ANIMATIONS = true;
 const bool SVG_AVATARS = true;
 
-void main() {
+// Firebase options placeholder
+class DefaultFirebaseOptions {
+	static FirebaseOptions get currentPlatform {
+		return const FirebaseOptions(
+			apiKey: 'your-api-key',
+			appId: 'your-app-id',
+			messagingSenderId: 'your-sender-id',
+			projectId: 'your-project-id',
+		);
+	}
+}
+
+void main() async {
+	WidgetsFlutterBinding.ensureInitialized();
+	await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 	runApp(const KhidmetiApp());
 }
 
@@ -86,7 +101,18 @@ class KhidmetiApp extends StatelessWidget {
 					elevation: 0,
 				),
 			),
-			home: const SplashScreen(),
+			home: StreamBuilder<fb_auth.User?>(
+				stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
+				builder: (context, snapshot) {
+					if (snapshot.connectionState == ConnectionState.waiting) {
+						return const SplashScreen();
+					}
+					if (snapshot.hasData && snapshot.data != null) {
+						return const HomeScreen();
+					}
+					return const AuthScreen();
+				},
+			),
 							routes: {
 					'/auth': (context) => const AuthScreen(),
 					'/home': (context) => const HomeScreen(),
@@ -277,30 +303,68 @@ class _AuthScreenState extends State<AuthScreen> {
 					),
 				],
 			),
-			child: TextFormField(
-				controller: controller,
-				obscureText: isPassword,
-				decoration: InputDecoration(
-					prefixIcon: Icon(icon, color: kPrimaryDark),
-					labelText: label,
-					labelStyle: kBodyStyle,
-					border: OutlineInputBorder(
-						borderRadius: BorderRadius.circular(16),
-						borderSide: BorderSide.none,
+							child: TextFormField(
+					controller: controller,
+					obscureText: isPassword,
+					validator: (value) {
+						if (value == null || value.isEmpty) {
+							return 'Ce champ est requis';
+						}
+						if (label == 'Email' && !value.contains('@')) {
+							return 'Email invalide';
+						}
+						if (isPassword && value.length < 6) {
+							return 'Minimum 6 caractères';
+						}
+						return null;
+					},
+					decoration: InputDecoration(
+						prefixIcon: Icon(icon, color: kPrimaryDark),
+						labelText: label,
+						labelStyle: kBodyStyle,
+						border: OutlineInputBorder(
+							borderRadius: BorderRadius.circular(16),
+							borderSide: BorderSide.none,
+						),
+						filled: true,
+						fillColor: Colors.transparent,
 					),
-					filled: true,
-					fillColor: Colors.transparent,
 				),
-			),
 		);
 	}
 
 	void _handleAuth() async {
+		if (!_formKey.currentState!.validate()) return;
 		setState(() => _isLoading = true);
-		await Future.delayed(const Duration(milliseconds: 800));
+		try {
+			if (_isLogin) {
+				await fb_auth.FirebaseAuth.instance.signInWithEmailAndPassword(
+					email: _emailController.text.trim(),
+					password: _passwordController.text,
+				);
+			} else {
+				final credential = await fb_auth.FirebaseAuth.instance.createUserWithEmailAndPassword(
+					email: _emailController.text.trim(),
+					password: _passwordController.text,
+				);
+				// Create user document
+				await FirebaseFirestore.instance.collection('users').doc(credential.user!.uid).set({
+					'email': _emailController.text.trim(),
+					'firstName': '',
+					'lastName': '',
+					'selectedAvatar': AvatarService.userAvatars.first,
+					'preferences': {},
+					'createdAt': FieldValue.serverTimestamp(),
+				});
+			}
+		} catch (e) {
+			if (!mounted) return;
+			ScaffoldMessenger.of(context).showSnackBar(
+				SnackBar(content: Text('Erreur: ${e.toString()}')),
+			);
+		}
 		if (!mounted) return;
 		setState(() => _isLoading = false);
-		Navigator.pushReplacementNamed(context, '/home');
 	}
 }
 
@@ -792,6 +856,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 						}),
 						const SizedBox(height: 24),
 						Text('Avatar sélectionné: $_avatar', style: kBodyStyle),
+						const SizedBox(height: 24),
+						BubbleButton(
+							text: 'Se déconnecter',
+							onPressed: () => fb_auth.FirebaseAuth.instance.signOut(),
+							primaryColor: kPrimaryRed,
+						),
 					],
 				),
 			),

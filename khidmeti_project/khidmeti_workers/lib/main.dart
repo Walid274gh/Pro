@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 // Palette Paytone One (accent pro)
 const Color kPrimaryYellow = Color(0xFFFCDC73);
@@ -30,7 +33,21 @@ const TextStyle kBodyStyle = TextStyle(
 	height: 1.4,
 );
 
-void main() {
+// Firebase options placeholder
+class DefaultFirebaseOptions {
+	static FirebaseOptions get currentPlatform {
+		return const FirebaseOptions(
+			apiKey: 'your-api-key',
+			appId: 'your-app-id',
+			messagingSenderId: 'your-sender-id',
+			projectId: 'your-project-id',
+		);
+	}
+}
+
+void main() async {
+	WidgetsFlutterBinding.ensureInitialized();
+	await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 	runApp(const KhidmetiWorkersApp());
 }
 
@@ -47,7 +64,18 @@ class KhidmetiWorkersApp extends StatelessWidget {
 				useMaterial3: true,
 				appBarTheme: const AppBarTheme(backgroundColor: Colors.transparent, elevation: 0),
 			),
-			home: const SplashScreen(),
+			home: StreamBuilder<fb_auth.User?>(
+				stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
+				builder: (context, snapshot) {
+					if (snapshot.connectionState == ConnectionState.waiting) {
+						return const SplashScreen();
+					}
+					if (snapshot.hasData && snapshot.data != null) {
+						return const WorkersHomeShell();
+					}
+					return const WorkersAuthScreen();
+				},
+			),
 			routes: {
 				'/home': (context) => const DashboardScreen(),
 				'/map': (context) => const WorkerMapScreen(),
@@ -248,7 +276,7 @@ class WorkersHomeShell extends StatefulWidget {
 
 class _WorkersHomeShellState extends State<WorkersHomeShell> {
 	int _index = 0;
-	final List<Widget> _screens = const [DashboardScreen(), WorkerMapScreen()];
+	final List<Widget> _screens = const [DashboardScreen(), WorkerMapScreen(), WorkersRequestsScreen(), WorkersProfileScreen()];
 	@override
 	Widget build(BuildContext context) {
 		return Scaffold(
@@ -268,6 +296,186 @@ class _WorkersHomeShellState extends State<WorkersHomeShell> {
 					items: const [
 						BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
 						BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Carte'),
+						BottomNavigationBarItem(icon: Icon(Icons.assignment), label: 'Interventions'),
+						BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
+					],
+				),
+			),
+		);
+	}
+}
+
+class WorkersAuthScreen extends StatefulWidget {
+	const WorkersAuthScreen({super.key});
+	@override
+	State<WorkersAuthScreen> createState() => _WorkersAuthScreenState();
+}
+
+class _WorkersAuthScreenState extends State<WorkersAuthScreen> {
+	final _formKey = GlobalKey<FormState>();
+	final _emailController = TextEditingController();
+	final _passwordController = TextEditingController();
+	bool _isLogin = true;
+	bool _isLoading = false;
+	@override
+	Widget build(BuildContext context) {
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: SafeArea(
+				child: SingleChildScrollView(
+					padding: const EdgeInsets.all(24),
+					child: Column(
+						children: [
+							const SizedBox(height: 40),
+							Lottie.asset('assets/animations/login_animation.json', height: 200),
+							const SizedBox(height: 32),
+							Text(_isLogin ? 'Connexion Pro' : 'Inscription Pro', style: kHeadingStyle.copyWith(fontSize: 28), textAlign: TextAlign.center),
+							const SizedBox(height: 32),
+							Form(
+								key: _formKey,
+								child: Column(
+									children: [
+										_buildTextField(controller: _emailController, label: 'Email', icon: Icons.email),
+										const SizedBox(height: 16),
+										_buildTextField(controller: _passwordController, label: 'Mot de passe', icon: Icons.lock, isPassword: true),
+									],
+								),
+							),
+							const SizedBox(height: 32),
+							FilledButton(
+								onPressed: _handleAuth,
+								style: FilledButton.styleFrom(backgroundColor: kPrimaryDark, minimumSize: const Size(double.infinity, 56)),
+								child: Text(_isLogin ? 'Se connecter' : 'S\'inscrire', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+							),
+							const SizedBox(height: 24),
+							TextButton(
+								onPressed: () => setState(() => _isLogin = !_isLogin),
+								child: Text(_isLogin ? 'Pas encore de compte ? S\'inscrire' : 'Déjà un compte ? Se connecter', style: kBodyStyle.copyWith(color: kPrimaryDark)),
+							),
+						],
+					),
+				),
+			),
+		);
+	}
+	Widget _buildTextField({required TextEditingController controller, required String label, required IconData icon, bool isPassword = false}) {
+		return Container(
+			decoration: BoxDecoration(color: kSurfaceColor, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: kPrimaryDark.withOpacity(0.06), offset: const Offset(0, 8), blurRadius: 24)]),
+			child: TextFormField(
+				controller: controller,
+				obscureText: isPassword,
+				validator: (value) {
+					if (value == null || value.isEmpty) return 'Ce champ est requis';
+					if (label == 'Email' && !value.contains('@')) return 'Email invalide';
+					if (isPassword && value.length < 6) return 'Minimum 6 caractères';
+					return null;
+				},
+				decoration: InputDecoration(
+					prefixIcon: Icon(icon, color: kPrimaryDark),
+					labelText: label,
+					labelStyle: kBodyStyle,
+					border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+					filled: true,
+					fillColor: Colors.transparent,
+				),
+			),
+		);
+	}
+	void _handleAuth() async {
+		if (!_formKey.currentState!.validate()) return;
+		setState(() => _isLoading = true);
+		try {
+			if (_isLogin) {
+				await fb_auth.FirebaseAuth.instance.signInWithEmailAndPassword(email: _emailController.text.trim(), password: _passwordController.text);
+			} else {
+				final credential = await fb_auth.FirebaseAuth.instance.createUserWithEmailAndPassword(email: _emailController.text.trim(), password: _passwordController.text);
+				await FirebaseFirestore.instance.collection('workers').doc(credential.user!.uid).set({
+					'email': _emailController.text.trim(),
+					'firstName': '',
+					'lastName': '',
+					'selectedAvatar': 'assets/avatars/workers/avatar_worker_1.svg',
+					'services': [],
+					'rating': 0.0,
+					'totalReviews': 0,
+					'location': const GeoPoint(0, 0),
+					'isAvailable': true,
+					'isVisible': true,
+					'portfolio': {},
+					'createdAt': FieldValue.serverTimestamp(),
+				});
+			}
+		} catch (e) {
+			if (!mounted) return;
+			ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur: ${e.toString()}')));
+		}
+		if (!mounted) return;
+		setState(() => _isLoading = false);
+	}
+}
+
+class WorkersRequestsScreen extends StatelessWidget {
+	const WorkersRequestsScreen({super.key});
+	@override
+	Widget build(BuildContext context) {
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: SafeArea(
+				child: Column(
+					children: [
+						const ModernHeader(title: 'Interventions', showBackButton: true),
+						Expanded(
+							child: ListView(
+								padding: const EdgeInsets.all(16),
+								children: const [
+									ProfessionalDashboardCard(
+										title: 'Intervention #123',
+										value: 'Plomberie',
+										icon: Icons.plumbing,
+										trend: 'En cours',
+									),
+									ProfessionalDashboardCard(
+										title: 'Intervention #124',
+										value: 'Électricité',
+										icon: Icons.electrical_services,
+										trend: 'Programmée',
+									),
+								],
+							),
+						),
+					],
+				),
+			),
+		);
+	}
+}
+
+class WorkersProfileScreen extends StatelessWidget {
+	const WorkersProfileScreen({super.key});
+	@override
+	Widget build(BuildContext context) {
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: SafeArea(
+				child: Column(
+					children: [
+						const ModernHeader(title: 'Profil Pro', showBackButton: true),
+						const SizedBox(height: 24),
+						CircleAvatar(
+							radius: 56,
+							backgroundColor: kPrimaryDark.withOpacity(0.3),
+							child: const Icon(Icons.person, size: 56, color: kPrimaryDark),
+						),
+						const SizedBox(height: 16),
+						Text('Travailleur Khidmeti', style: kHeadingStyle),
+						const SizedBox(height: 4),
+						const Text('email@example.com', style: kBodyStyle),
+						const SizedBox(height: 24),
+						FilledButton.icon(
+							onPressed: () => fb_auth.FirebaseAuth.instance.signOut(),
+							icon: const Icon(Icons.logout),
+							label: const Text('Se déconnecter'),
+							style: FilledButton.styleFrom(backgroundColor: kPrimaryRed),
+						),
 					],
 				),
 			),
