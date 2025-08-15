@@ -2782,3 +2782,380 @@ class _SliderSetting extends StatelessWidget {
 		);
 	}
 }
+
+// Error handling and loading utilities
+class AppErrorHandler {
+	static void showError(BuildContext context, String message) {
+		ScaffoldMessenger.of(context).showSnackBar(
+			SnackBar(
+				content: Text(message),
+				backgroundColor: kErrorColor,
+				behavior: SnackBarBehavior.floating,
+				shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+			),
+		);
+	}
+	
+	static void showSuccess(BuildContext context, String message) {
+		ScaffoldMessenger.of(context).showSnackBar(
+			SnackBar(
+				content: Text(message),
+				backgroundColor: kSuccessColor,
+				behavior: SnackBarBehavior.floating,
+				shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+			),
+		);
+	}
+	
+	static void showInfo(BuildContext context, String message) {
+		ScaffoldMessenger.of(context).showSnackBar(
+			SnackBar(
+				content: Text(message),
+				backgroundColor: kPrimaryTeal,
+				behavior: SnackBarBehavior.floating,
+				shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+			),
+		);
+	}
+}
+
+// Loading overlay widget
+class LoadingOverlay extends StatelessWidget {
+	final bool isLoading;
+	final Widget child;
+	final String? message;
+	
+	const LoadingOverlay({
+		super.key,
+		required this.isLoading,
+		required this.child,
+		this.message,
+	});
+	
+	@override
+	Widget build(BuildContext context) {
+		return Stack(
+			children: [
+				child,
+				if (isLoading)
+					Container(
+						color: Colors.black54,
+						child: Center(
+							child: Container(
+								padding: const EdgeInsets.all(24),
+								decoration: BoxDecoration(
+									color: kSurfaceColor,
+									borderRadius: BorderRadius.circular(16),
+									boxShadow: [
+										BoxShadow(
+											color: kPrimaryDark.withOpacity(0.1),
+											offset: const Offset(0, 8),
+											blurRadius: 24,
+										),
+									],
+								),
+								child: Column(
+									mainAxisSize: MainAxisSize.min,
+									children: [
+										const CircularProgressIndicator(color: kPrimaryTeal),
+										if (message != null) ...[
+											const SizedBox(height: 16),
+											Text(message!, style: kBodyStyle),
+										],
+									],
+								),
+							),
+						),
+					),
+			],
+		);
+	}
+}
+
+// Network connectivity service
+class ConnectivityService {
+	static Future<bool> checkConnectivity() async {
+		try {
+			final result = await http.get(Uri.parse('https://www.google.com'));
+			return result.statusCode == 200;
+		} catch (e) {
+			return false;
+		}
+	}
+	
+	static Stream<bool> get connectivityStream {
+		return Stream.periodic(const Duration(seconds: 5), (_) async {
+			return await checkConnectivity();
+		}).asyncMap((future) => future);
+	}
+}
+
+// App lifecycle management
+class AppLifecycleManager extends StatefulWidget {
+	final Widget child;
+	
+	const AppLifecycleManager({super.key, required this.child});
+	
+	@override
+	State<AppLifecycleManager> createState() => _AppLifecycleManagerState();
+}
+
+class _AppLifecycleManagerState extends State<AppLifecycleManager> with WidgetsBindingObserver {
+	@override
+	void initState() {
+		super.initState();
+		WidgetsBinding.instance.addObserver(this);
+	}
+	
+	@override
+	void dispose() {
+		WidgetsBinding.instance.removeObserver(this);
+		super.dispose();
+	}
+	
+	@override
+	void didChangeAppLifecycleState(AppLifecycleState state) {
+		switch (state) {
+			case AppLifecycleState.resumed:
+				// App came to foreground
+				_handleAppResumed();
+				break;
+			case AppLifecycleState.inactive:
+				// App is inactive
+				break;
+			case AppLifecycleState.paused:
+				// App went to background
+				_handleAppPaused();
+				break;
+			case AppLifecycleState.detached:
+				// App is detached
+				break;
+			case AppLifecycleState.hidden:
+				// App is hidden
+				break;
+		}
+	}
+	
+	void _handleAppResumed() {
+		// Refresh user data, check for new notifications, etc.
+		final user = fb_auth.FirebaseAuth.instance.currentUser;
+		if (user != null) {
+			// Update user's last active timestamp
+			FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+				'lastActiveAt': FieldValue.serverTimestamp(),
+			});
+		}
+	}
+	
+	void _handleAppPaused() {
+		// Save any pending data, update status, etc.
+		final user = fb_auth.FirebaseAuth.instance.currentUser;
+		if (user != null) {
+			// Update user's status to offline
+			FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+				'isOnline': false,
+				'lastActiveAt': FieldValue.serverTimestamp(),
+			});
+		}
+	}
+	
+	@override
+	Widget build(BuildContext context) {
+		return widget.child;
+	}
+}
+
+// Enhanced splash screen with better loading
+class EnhancedSplashScreen extends StatefulWidget {
+	const EnhancedSplashScreen({super.key});
+	@override
+	State<EnhancedSplashScreen> createState() => _EnhancedSplashScreenState();
+}
+
+class _EnhancedSplashScreenState extends State<EnhancedSplashScreen> with TickerProviderStateMixin {
+	late AnimationController _animationController;
+	late AnimationController _fadeController;
+	late Animation<double> _scaleAnimation;
+	late Animation<double> _fadeAnimation;
+	
+	@override
+	void initState() {
+		super.initState();
+		_animationController = AnimationController(
+			duration: const Duration(seconds: 2),
+			vsync: this,
+		);
+		_fadeController = AnimationController(
+			duration: const Duration(milliseconds: 500),
+			vsync: this,
+		);
+		
+		_scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
+			CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
+		);
+		_fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+			CurvedAnimation(parent: _fadeController, curve: Curves.easeIn),
+		);
+		
+		_initializeApp();
+	}
+	
+	Future<void> _initializeApp() async {
+		// Start animations
+		_animationController.forward();
+		await Future.delayed(const Duration(milliseconds: 300));
+		_fadeController.forward();
+		
+		// Simulate app initialization
+		await Future.delayed(const Duration(seconds: 2));
+		
+		// Check connectivity
+		final isConnected = await ConnectivityService.checkConnectivity();
+		if (!isConnected) {
+			if (!mounted) return;
+			AppErrorHandler.showError(context, 'Vérifiez votre connexion internet');
+		}
+		
+		// Navigate to appropriate screen
+		if (!mounted) return;
+		Navigator.of(context).pushReplacementNamed('/home');
+	}
+	
+	@override
+	void dispose() {
+		_animationController.dispose();
+		_fadeController.dispose();
+		super.dispose();
+	}
+	
+	@override
+	Widget build(BuildContext context) {
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: Center(
+				child: Column(
+					mainAxisAlignment: MainAxisAlignment.center,
+					children: [
+						// Logo animation
+						ScaleTransition(
+							scale: _scaleAnimation,
+							child: Container(
+								width: 120,
+								height: 120,
+								decoration: BoxDecoration(
+									color: kPrimaryTeal,
+									shape: BoxShape.circle,
+									boxShadow: [
+										BoxShadow(
+											color: kPrimaryTeal.withOpacity(0.3),
+											offset: const Offset(0, 8),
+											blurRadius: 24,
+										),
+									],
+								),
+								child: const Icon(
+									Icons.build,
+									color: Colors.white,
+									size: 60,
+								),
+							),
+						),
+						const SizedBox(height: 32),
+						// App name
+						FadeTransition(
+							opacity: _fadeAnimation,
+							child: Text(
+								'Khidmeti',
+								style: kHeadingStyle.copyWith(
+									fontSize: 32,
+									color: kPrimaryDark,
+								),
+							),
+						),
+						const SizedBox(height: 8),
+						FadeTransition(
+							opacity: _fadeAnimation,
+							child: Text(
+								'Services à domicile',
+								style: kBodyStyle.copyWith(
+									color: kSubtitleColor,
+									fontSize: 16,
+								),
+							),
+						),
+						const SizedBox(height: 48),
+						// Loading indicator
+						FadeTransition(
+							opacity: _fadeAnimation,
+							child: const CircularProgressIndicator(
+								color: kPrimaryTeal,
+								strokeWidth: 3,
+							),
+						),
+					],
+				),
+			),
+		);
+	}
+}
+
+// Enhanced home screen with connectivity check
+class EnhancedHomeScreen extends StatefulWidget {
+	const EnhancedHomeScreen({super.key});
+	@override
+	State<EnhancedHomeScreen> createState() => _EnhancedHomeScreenState();
+}
+
+class _EnhancedHomeScreenState extends State<EnhancedHomeScreen> {
+	bool _isConnected = true;
+	
+	@override
+	void initState() {
+		super.initState();
+		_checkConnectivity();
+	}
+	
+	Future<void> _checkConnectivity() async {
+		final isConnected = await ConnectivityService.checkConnectivity();
+		if (mounted) {
+			setState(() => _isConnected = isConnected);
+		}
+	}
+	
+	@override
+	Widget build(BuildContext context) {
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: Column(
+				children: [
+					// Connectivity banner
+					if (!_isConnected)
+						Container(
+							width: double.infinity,
+							padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+							color: kErrorColor,
+							child: Row(
+								children: [
+									const Icon(Icons.wifi_off, color: Colors.white, size: 16),
+									const SizedBox(width: 8),
+									Text(
+										'Pas de connexion internet',
+										style: kBodyStyle.copyWith(color: Colors.white, fontSize: 14),
+									),
+									const Spacer(),
+									GestureDetector(
+										onTap: _checkConnectivity,
+										child: const Icon(Icons.refresh, color: Colors.white, size: 16),
+									),
+								],
+							),
+						),
+					// Main content
+					Expanded(
+						child: HomeScreen(),
+					),
+				],
+			),
+		);
+	}
+}

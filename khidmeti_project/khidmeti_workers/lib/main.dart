@@ -1517,3 +1517,455 @@ class _ToolButton extends StatelessWidget {
 		);
 	}
 }
+
+// Error handling and loading utilities for workers
+class WorkerErrorHandler {
+	static void showError(BuildContext context, String message) {
+		ScaffoldMessenger.of(context).showSnackBar(
+			SnackBar(
+				content: Text(message),
+				backgroundColor: kErrorColor,
+				behavior: SnackBarBehavior.floating,
+				shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+			),
+		);
+	}
+	
+	static void showSuccess(BuildContext context, String message) {
+		ScaffoldMessenger.of(context).showSnackBar(
+			SnackBar(
+				content: Text(message),
+				backgroundColor: kSuccessColor,
+				behavior: SnackBarBehavior.floating,
+				shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+			),
+		);
+	}
+	
+	static void showInfo(BuildContext context, String message) {
+		ScaffoldMessenger.of(context).showSnackBar(
+			SnackBar(
+				content: Text(message),
+				backgroundColor: kPrimaryTeal,
+				behavior: SnackBarBehavior.floating,
+				shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+			),
+		);
+	}
+}
+
+// Worker-specific loading overlay
+class WorkerLoadingOverlay extends StatelessWidget {
+	final bool isLoading;
+	final Widget child;
+	final String? message;
+	
+	const WorkerLoadingOverlay({
+		super.key,
+		required this.isLoading,
+		required this.child,
+		this.message,
+	});
+	
+	@override
+	Widget build(BuildContext context) {
+		return Stack(
+			children: [
+				child,
+				if (isLoading)
+					Container(
+						color: Colors.black54,
+						child: Center(
+							child: Container(
+								padding: const EdgeInsets.all(24),
+								decoration: BoxDecoration(
+									color: kSurfaceColor,
+									borderRadius: BorderRadius.circular(16),
+									boxShadow: [
+										BoxShadow(
+											color: kPrimaryDark.withOpacity(0.1),
+											offset: const Offset(0, 8),
+											blurRadius: 24,
+										),
+									],
+								),
+								child: Column(
+									mainAxisSize: MainAxisSize.min,
+									children: [
+										const CircularProgressIndicator(color: kPrimaryDark),
+										if (message != null) ...[
+											const SizedBox(height: 16),
+											Text(message!, style: kBodyStyle),
+										],
+									],
+								),
+							),
+						),
+					),
+			],
+		);
+	}
+}
+
+// Worker connectivity service
+class WorkerConnectivityService {
+	static Future<bool> checkConnectivity() async {
+		try {
+			final result = await http.get(Uri.parse('https://www.google.com'));
+			return result.statusCode == 200;
+		} catch (e) {
+			return false;
+		}
+	}
+	
+	static Stream<bool> get connectivityStream {
+		return Stream.periodic(const Duration(seconds: 5), (_) async {
+			return await checkConnectivity();
+		}).asyncMap((future) => future);
+	}
+}
+
+// Worker app lifecycle management
+class WorkerAppLifecycleManager extends StatefulWidget {
+	final Widget child;
+	
+	const WorkerAppLifecycleManager({super.key, required this.child});
+	
+	@override
+	State<WorkerAppLifecycleManager> createState() => _WorkerAppLifecycleManagerState();
+}
+
+class _WorkerAppLifecycleManagerState extends State<WorkerAppLifecycleManager> with WidgetsBindingObserver {
+	@override
+	void initState() {
+		super.initState();
+		WidgetsBinding.instance.addObserver(this);
+	}
+	
+	@override
+	void dispose() {
+		WidgetsBinding.instance.removeObserver(this);
+		super.dispose();
+	}
+	
+	@override
+	void didChangeAppLifecycleState(AppLifecycleState state) {
+		switch (state) {
+			case AppLifecycleState.resumed:
+				_handleAppResumed();
+				break;
+			case AppLifecycleState.inactive:
+				break;
+			case AppLifecycleState.paused:
+				_handleAppPaused();
+				break;
+			case AppLifecycleState.detached:
+				break;
+			case AppLifecycleState.hidden:
+				break;
+		}
+	}
+	
+	void _handleAppResumed() {
+		final user = fb_auth.FirebaseAuth.instance.currentUser;
+		if (user != null) {
+			FirebaseFirestore.instance.collection('workers').doc(user.uid).update({
+				'lastActiveAt': FieldValue.serverTimestamp(),
+				'isOnline': true,
+			});
+		}
+	}
+	
+	void _handleAppPaused() {
+		final user = fb_auth.FirebaseAuth.instance.currentUser;
+		if (user != null) {
+			FirebaseFirestore.instance.collection('workers').doc(user.uid).update({
+				'isOnline': false,
+				'lastActiveAt': FieldValue.serverTimestamp(),
+			});
+		}
+	}
+	
+	@override
+	Widget build(BuildContext context) {
+		return widget.child;
+	}
+}
+
+// Enhanced worker splash screen
+class EnhancedWorkerSplashScreen extends StatefulWidget {
+	const EnhancedWorkerSplashScreen({super.key});
+	@override
+	State<EnhancedWorkerSplashScreen> createState() => _EnhancedWorkerSplashScreenState();
+}
+
+class _EnhancedWorkerSplashScreenState extends State<EnhancedWorkerSplashScreen> with TickerProviderStateMixin {
+	late AnimationController _animationController;
+	late AnimationController _fadeController;
+	late Animation<double> _scaleAnimation;
+	late Animation<double> _fadeAnimation;
+	
+	@override
+	void initState() {
+		super.initState();
+		_animationController = AnimationController(
+			duration: const Duration(seconds: 2),
+			vsync: this,
+		);
+		_fadeController = AnimationController(
+			duration: const Duration(milliseconds: 500),
+			vsync: this,
+		);
+		
+		_scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
+			CurvedAnimation(parent: _animationController, curve: Curves.elasticOut),
+		);
+		_fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+			CurvedAnimation(parent: _fadeController, curve: Curves.easeIn),
+		);
+		
+		_initializeApp();
+	}
+	
+	Future<void> _initializeApp() async {
+		_animationController.forward();
+		await Future.delayed(const Duration(milliseconds: 300));
+		_fadeController.forward();
+		
+		await Future.delayed(const Duration(seconds: 2));
+		
+		final isConnected = await WorkerConnectivityService.checkConnectivity();
+		if (!isConnected) {
+			if (!mounted) return;
+			WorkerErrorHandler.showError(context, 'Vérifiez votre connexion internet');
+		}
+		
+		if (!mounted) return;
+		Navigator.of(context).pushReplacementNamed('/home');
+	}
+	
+	@override
+	void dispose() {
+		_animationController.dispose();
+		_fadeController.dispose();
+		super.dispose();
+	}
+	
+	@override
+	Widget build(BuildContext context) {
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: Center(
+				child: Column(
+					mainAxisAlignment: MainAxisAlignment.center,
+					children: [
+						ScaleTransition(
+							scale: _scaleAnimation,
+							child: Container(
+								width: 120,
+								height: 120,
+								decoration: BoxDecoration(
+									color: kPrimaryDark,
+									shape: BoxShape.circle,
+									boxShadow: [
+										BoxShadow(
+											color: kPrimaryDark.withOpacity(0.3),
+											offset: const Offset(0, 8),
+											blurRadius: 24,
+										),
+									],
+								),
+								child: const Icon(
+									Icons.engineering,
+									color: Colors.white,
+									size: 60,
+								),
+							),
+						),
+						const SizedBox(height: 32),
+						FadeTransition(
+							opacity: _fadeAnimation,
+							child: Text(
+								'Khidmeti Pro',
+								style: kHeadingStyle.copyWith(
+									fontSize: 32,
+									color: kPrimaryDark,
+								),
+							),
+						),
+						const SizedBox(height: 8),
+						FadeTransition(
+							opacity: _fadeAnimation,
+							child: Text(
+								'Prestataires de services',
+								style: kBodyStyle.copyWith(
+									color: kSubtitleColor,
+									fontSize: 16,
+								),
+							),
+						),
+						const SizedBox(height: 48),
+						FadeTransition(
+							opacity: _fadeAnimation,
+							child: const CircularProgressIndicator(
+								color: kPrimaryDark,
+								strokeWidth: 3,
+							),
+						),
+					],
+				),
+			),
+		);
+	}
+}
+
+// Enhanced worker home shell with connectivity
+class EnhancedWorkersHomeShell extends StatefulWidget {
+	const EnhancedWorkersHomeShell({super.key});
+	@override
+	State<EnhancedWorkersHomeShell> createState() => _EnhancedWorkersHomeShellState();
+}
+
+class _EnhancedWorkersHomeShellState extends State<EnhancedWorkersHomeShell> {
+	bool _isConnected = true;
+	
+	@override
+	void initState() {
+		super.initState();
+		_checkConnectivity();
+	}
+	
+	Future<void> _checkConnectivity() async {
+		final isConnected = await WorkerConnectivityService.checkConnectivity();
+		if (mounted) {
+			setState(() => _isConnected = isConnected);
+		}
+	}
+	
+	@override
+	Widget build(BuildContext context) {
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: Column(
+				children: [
+					if (!_isConnected)
+						Container(
+							width: double.infinity,
+							padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+							color: kErrorColor,
+							child: Row(
+								children: [
+									const Icon(Icons.wifi_off, color: Colors.white, size: 16),
+									const SizedBox(width: 8),
+									Text(
+										'Pas de connexion internet',
+										style: kBodyStyle.copyWith(color: Colors.white, fontSize: 14),
+									),
+									const Spacer(),
+									GestureDetector(
+										onTap: _checkConnectivity,
+										child: const Icon(Icons.refresh, color: Colors.white, size: 16),
+									),
+								],
+							),
+						),
+					Expanded(
+						child: WorkersHomeShell(),
+					),
+				],
+			),
+		);
+	}
+}
+
+// Worker availability toggle with enhanced UI
+class EnhancedAvailabilityToggle extends StatefulWidget {
+	final bool initialValue;
+	final ValueChanged<bool> onChanged;
+	
+	const EnhancedAvailabilityToggle({
+		super.key,
+		required this.initialValue,
+		required this.onChanged,
+	});
+	
+	@override
+	State<EnhancedAvailabilityToggle> createState() => _EnhancedAvailabilityToggleState();
+}
+
+class _EnhancedAvailabilityToggleState extends State<EnhancedAvailabilityToggle> with SingleTickerProviderStateMixin {
+	late bool _isAvailable;
+	late AnimationController _animationController;
+	late Animation<double> _scaleAnimation;
+	
+	@override
+	void initState() {
+		super.initState();
+		_isAvailable = widget.initialValue;
+		_animationController = AnimationController(
+			duration: const Duration(milliseconds: 200),
+			vsync: this,
+		);
+		_scaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(
+			CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+		);
+	}
+	
+	@override
+	void dispose() {
+		_animationController.dispose();
+		super.dispose();
+	}
+	
+	void _toggleAvailability() {
+		_animationController.forward().then((_) {
+			_animationController.reverse();
+		});
+		
+		setState(() => _isAvailable = !_isAvailable);
+		widget.onChanged(_isAvailable);
+	}
+	
+	@override
+	Widget build(BuildContext context) {
+		return GestureDetector(
+			onTap: _toggleAvailability,
+			child: ScaleTransition(
+				scale: _scaleAnimation,
+				child: Container(
+					padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+					decoration: BoxDecoration(
+						color: _isAvailable ? kSuccessColor : kErrorColor,
+						borderRadius: BorderRadius.circular(20),
+						boxShadow: [
+							BoxShadow(
+								color: (_isAvailable ? kSuccessColor : kErrorColor).withOpacity(0.3),
+								offset: const Offset(0, 4),
+								blurRadius: 12,
+							),
+						],
+					),
+					child: Row(
+						mainAxisSize: MainAxisSize.min,
+						children: [
+							Icon(
+								_isAvailable ? Icons.check_circle : Icons.cancel,
+								color: Colors.white,
+								size: 16,
+							),
+							const SizedBox(width: 8),
+							Text(
+								_isAvailable ? 'Disponible' : 'Indisponible',
+								style: kBodyStyle.copyWith(
+									color: Colors.white,
+									fontWeight: FontWeight.w600,
+									fontSize: 14,
+								),
+							),
+						],
+					),
+				),
+			),
+		);
+	}
+}
