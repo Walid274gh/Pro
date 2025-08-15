@@ -315,10 +315,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
 	final List<Widget> _screens = const [
 		HomeView(),
-		PlaceholderScreen(title: 'Recherche'),
-		PlaceholderScreen(title: 'Carte'),
-		PlaceholderScreen(title: 'Demandes'),
-		PlaceholderScreen(title: 'Profil'),
+		SearchScreen(),
+		MapScreen(),
+		RequestsScreen(),
+		ProfileScreen(),
 	];
 
 	@override
@@ -612,6 +612,186 @@ class MapScreen extends StatelessWidget {
 							bottom: 24,
 							child: BubbleButton(text: 'Demander un service', onPressed: () {}),
 						),
+					],
+				),
+			),
+		);
+	}
+}
+
+class SearchScreen extends StatefulWidget {
+	const SearchScreen({super.key});
+	@override
+	State<SearchScreen> createState() => _SearchScreenState();
+}
+
+class _SearchScreenState extends State<SearchScreen> {
+	final TextEditingController _query = TextEditingController();
+	final List<ServiceModel> _services = [
+		ServiceModel(id: '1', name: 'Plomberie', category: 'Maison', description: 'Réparation et installation', basePrice: 1500, iconPath: '', isActive: true),
+		ServiceModel(id: '2', name: 'Électricité', category: 'Maison', description: 'Pannes et travaux', basePrice: 2000, iconPath: '', isActive: true),
+		ServiceModel(id: '3', name: 'Peinture', category: 'Rénovation', description: 'Intérieur/Extérieur', basePrice: 2500, iconPath: '', isActive: true),
+		ServiceModel(id: '4', name: 'Ménage', category: 'Maison', description: 'À la carte', basePrice: 1200, iconPath: '', isActive: true),
+	];
+	@override
+	Widget build(BuildContext context) {
+		final List<ServiceModel> filtered = _services.where((s) => s.name.toLowerCase().contains(_query.text.toLowerCase())).toList();
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: SafeArea(
+				child: Column(
+					children: [
+						const ModernHeader(title: 'Recherche'),
+						Padding(
+							padding: const EdgeInsets.all(16),
+							child: Container(
+								decoration: BoxDecoration(color: kSurfaceColor, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: kPrimaryDark.withOpacity(0.06), offset: const Offset(0, 8), blurRadius: 24)]),
+								child: TextField(
+									controller: _query,
+									onChanged: (_) => setState(() {}),
+									decoration: const InputDecoration(
+										prefixIcon: Icon(Icons.search),
+										hintText: 'Rechercher un service...',
+										border: InputBorder.none,
+										contentPadding: EdgeInsets.all(16),
+									),
+								),
+							),
+						Expanded(
+							child: GridView.builder(
+								padding: const EdgeInsets.symmetric(horizontal: 16),
+								gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 1.1, crossAxisSpacing: 12, mainAxisSpacing: 12),
+								itemCount: filtered.length,
+								itemBuilder: (_, i) {
+									final s = filtered[i];
+									return Material(
+										elevation: 6,
+										borderRadius: BorderRadius.circular(20),
+										color: kSurfaceColor,
+										child: InkWell(
+											borderRadius: BorderRadius.circular(20),
+											onTap: () {},
+											child: Padding(
+												padding: const EdgeInsets.all(16),
+												child: Column(
+													crossAxisAlignment: CrossAxisAlignment.start,
+													children: [
+														Icon(Icons.category, color: kPrimaryDark),
+														const Spacer(),
+														Text(s.name, style: kHeadingStyle.copyWith(fontSize: 18)),
+														Text(s.category, style: kBodyStyle),
+													],
+												),
+											),
+										),
+									);
+								},
+							),
+						),
+					],
+				),
+			),
+		);
+	}
+}
+
+class RequestsScreen extends StatelessWidget {
+	const RequestsScreen({super.key});
+	@override
+	Widget build(BuildContext context) {
+		final List<RequestModel> requests = [
+			RequestModel(id: 'r1', userId: 'u', workerId: null, serviceType: 'Plomberie', description: 'Fuite évier', mediaUrls: const [], location: const GeoPoint(0, 0), scheduledDate: DateTime.now(), status: RequestStatus.pending, finalPrice: null),
+			RequestModel(id: 'r2', userId: 'u', workerId: null, serviceType: 'Électricité', description: 'Disjoncteur', mediaUrls: const [], location: const GeoPoint(0, 0), scheduledDate: DateTime.now(), status: RequestStatus.inProgress, finalPrice: null),
+		];
+		Color statusColor(RequestStatus s) {
+			switch (s) {
+				case RequestStatus.pending:
+					return kPrimaryYellow;
+				case RequestStatus.accepted:
+					return kPrimaryTeal;
+				case RequestStatus.inProgress:
+					return Colors.orange;
+				case RequestStatus.completed:
+					return kSuccessColor;
+				case RequestStatus.cancelled:
+					return kErrorColor;
+			}
+		}
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: SafeArea(
+				child: Column(
+					children: [
+						const ModernHeader(title: 'Mes demandes'),
+						Expanded(
+							child: ListView.builder(
+								padding: const EdgeInsets.all(16),
+								itemCount: requests.length,
+								itemBuilder: (_, i) {
+									final r = requests[i];
+									return Container(
+										margin: const EdgeInsets.only(bottom: 12),
+										child: Material(
+											elevation: 6,
+											borderRadius: BorderRadius.circular(16),
+											color: kSurfaceColor,
+											child: ListTile(
+												title: Text(r.serviceType, style: kSubheadingStyle),
+												subtitle: Text(r.description, style: kBodyStyle),
+												trailing: Container(
+													padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+													decoration: BoxDecoration(color: statusColor(r.status).withOpacity(0.18), borderRadius: BorderRadius.circular(999)),
+													child: Text(r.status.name, style: TextStyle(color: statusColor(r.status), fontWeight: FontWeight.w600)),
+												),
+											),
+										),
+									);
+								},
+							),
+						),
+					],
+				),
+			),
+		);
+	}
+}
+
+class ProfileScreen extends StatefulWidget {
+	const ProfileScreen({super.key});
+	@override
+	State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+	final AvatarService _avatarService = AvatarService();
+	late String _avatar = AvatarService.userAvatars.first;
+	@override
+	Widget build(BuildContext context) {
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: SafeArea(
+				child: Column(
+					children: [
+						const ModernHeader(title: 'Profil'),
+						const SizedBox(height: 24),
+						CircleAvatar(
+							radius: 56,
+							backgroundColor: kPrimaryYellow.withOpacity(0.3),
+							child: Padding(
+								padding: const EdgeInsets.all(6),
+								child: Image.asset('assets/images/placeholder.png', errorBuilder: (_, __, ___) => const Icon(Icons.person, size: 56, color: kPrimaryDark)),
+							),
+						),
+						const SizedBox(height: 16),
+						Text('Utilisateur Khidmeti', style: kHeadingStyle),
+						const SizedBox(height: 4),
+						const Text('email@example.com', style: kBodyStyle),
+						const SizedBox(height: 24),
+						BubbleButton(text: 'Changer d\'avatar', onPressed: () {
+							setState(() => _avatar = _avatarService.getRandomUserAvatar());
+						}),
+						const SizedBox(height: 24),
+						Text('Avatar sélectionné: $_avatar', style: kBodyStyle),
 					],
 				),
 			),

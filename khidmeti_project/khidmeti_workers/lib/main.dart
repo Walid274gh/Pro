@@ -239,3 +239,38 @@ class WorkerMapScreen extends StatelessWidget {
 		);
 	}
 }
+
+class WorkersHomeShell extends StatefulWidget {
+	const WorkersHomeShell({super.key});
+	@override
+	State<WorkersHomeShell> createState() => _WorkersHomeShellState();
+}
+
+class _WorkersHomeShellState extends State<WorkersHomeShell> {
+	int _index = 0;
+	final List<Widget> _screens = const [DashboardScreen(), WorkerMapScreen()];
+	@override
+	Widget build(BuildContext context) {
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: _screens[_index],
+			bottomNavigationBar: Container(
+				margin: const EdgeInsets.all(16),
+				decoration: BoxDecoration(color: kSurfaceColor, borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: kPrimaryDark.withOpacity(0.1), offset: const Offset(0, 4), blurRadius: 20)]),
+				child: BottomNavigationBar(
+					currentIndex: _index,
+					onTap: (i) => setState(() => _index = i),
+					backgroundColor: Colors.transparent,
+					elevation: 0,
+					type: BottomNavigationBarType.fixed,
+					selectedItemColor: kPrimaryDark,
+					unselectedItemColor: kSubtitleColor,
+					items: const [
+						BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
+						BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Carte'),
+					],
+				),
+			),
+		);
+	}
+}
