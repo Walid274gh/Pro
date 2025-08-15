@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 // Palette Paytone One (accent pro)
 const Color kPrimaryYellow = Color(0xFFFCDC73);
@@ -48,6 +50,7 @@ class KhidmetiWorkersApp extends StatelessWidget {
 			home: const SplashScreen(),
 			routes: {
 				'/home': (context) => const DashboardScreen(),
+				'/map': (context) => const WorkerMapScreen(),
 			},
 		);
 	}
@@ -202,4 +205,37 @@ class ModernHeader extends StatelessWidget implements PreferredSizeWidget {
 	}
 	@override
 	Size get preferredSize => const Size.fromHeight(80);
+}
+
+class WorkerMapScreen extends StatelessWidget {
+	const WorkerMapScreen({super.key});
+	static const LatLng algerCenter = LatLng(36.737232, 3.086472);
+	@override
+	Widget build(BuildContext context) {
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: SafeArea(
+				child: Stack(
+					children: [
+						const ModernHeader(title: 'Carte (pro)', showBackButton: true),
+						Padding(
+							padding: const EdgeInsets.only(top: 88),
+							child: FlutterMap(
+								options: const MapOptions(initialCenter: algerCenter, initialZoom: 13),
+								children: const [
+									TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'khidmeti.workers'),
+								],
+							),
+						),
+						Positioned(
+							left: 16,
+							right: 16,
+							bottom: 24,
+							child: FilledButton.icon(onPressed: () {}, icon: const Icon(Icons.near_me), label: const Text('Aller à une intervention')),
+						),
+					],
+				),
+			),
+		);
+	}
 }

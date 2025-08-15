@@ -1,6 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart' as fb_storage;
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'dart:io';
 
 // Palette Paytone One
 const Color kPrimaryYellow = Color(0xFFFCDC73);
@@ -78,14 +87,14 @@ class KhidmetiApp extends StatelessWidget {
 				),
 			),
 			home: const SplashScreen(),
-			routes: {
-				'/auth': (context) => const AuthScreen(),
-				'/home': (context) => const HomeScreen(),
-				'/search': (context) => const PlaceholderScreen(title: 'Recherche'),
-				'/map': (context) => const PlaceholderScreen(title: 'Carte'),
-				'/requests': (context) => const PlaceholderScreen(title: 'Demandes'),
-				'/profile': (context) => const PlaceholderScreen(title: 'Profil'),
-			},
+							routes: {
+					'/auth': (context) => const AuthScreen(),
+					'/home': (context) => const HomeScreen(),
+					'/search': (context) => const PlaceholderScreen(title: 'Recherche'),
+					'/map': (context) => const MapScreen(),
+					'/requests': (context) => const PlaceholderScreen(title: 'Demandes'),
+					'/profile': (context) => const PlaceholderScreen(title: 'Profil'),
+				},
 		);
 	}
 }
@@ -575,4 +584,250 @@ class _BubbleButtonState extends State<BubbleButton> with SingleTickerProviderSt
 	}
 	@override
 	void dispose() { _controller.dispose(); super.dispose(); }
+}
+
+class MapScreen extends StatelessWidget {
+	const MapScreen({super.key});
+	static const LatLng algerCenter = LatLng(36.737232, 3.086472);
+	@override
+	Widget build(BuildContext context) {
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: SafeArea(
+				child: Stack(
+					children: [
+						const ModernHeader(title: 'Carte', showBackButton: true),
+						Padding(
+							padding: const EdgeInsets.only(top: 88),
+							child: FlutterMap(
+								options: const MapOptions(initialCenter: algerCenter, initialZoom: 13),
+								children: const [
+									TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'khidmeti.users'),
+								],
+							),
+						),
+						Positioned(
+							left: 16,
+							right: 16,
+							bottom: 24,
+							child: BubbleButton(text: 'Demander un service', onPressed: () {}),
+						),
+					],
+				),
+			),
+		);
+	}
+}
+
+// Models (skeletons)
+class UserModel {
+	final String id;
+	final String firstName;
+	final String lastName;
+	final String email;
+	final String? phoneNumber;
+	final String selectedAvatar;
+	final Map<String, dynamic> preferences;
+	final GeoPoint? location;
+	final DateTime createdAt;
+	final bool isActive;
+	UserModel({required this.id, required this.firstName, required this.lastName, required this.email, this.phoneNumber, required this.selectedAvatar, required this.preferences, this.location, required this.createdAt, this.isActive = true});
+}
+
+class WorkerModel {
+	final String id;
+	final String firstName;
+	final String lastName;
+	final String selectedAvatar;
+	final List<String> services;
+	final double rating;
+	final int totalReviews;
+	final GeoPoint location;
+	final bool isAvailable;
+	final bool isVisible;
+	final Map<String, dynamic> portfolio;
+	WorkerModel({required this.id, required this.firstName, required this.lastName, required this.selectedAvatar, required this.services, required this.rating, required this.totalReviews, required this.location, required this.isAvailable, required this.isVisible, required this.portfolio});
+}
+
+class ServiceModel {
+	final String id;
+	final String name;
+	final String category;
+	final String description;
+	final double basePrice;
+	final String iconPath;
+	final bool isActive;
+	ServiceModel({required this.id, required this.name, required this.category, required this.description, required this.basePrice, required this.iconPath, required this.isActive});
+}
+
+enum RequestStatus { pending, accepted, inProgress, completed, cancelled }
+
+class RequestModel {
+	final String id;
+	final String userId;
+	final String? workerId;
+	final String serviceType;
+	final String description;
+	final List<String> mediaUrls;
+	final GeoPoint location;
+	final DateTime scheduledDate;
+	final RequestStatus status;
+	final double? finalPrice;
+	RequestModel({required this.id, required this.userId, required this.workerId, required this.serviceType, required this.description, required this.mediaUrls, required this.location, required this.scheduledDate, required this.status, required this.finalPrice});
+}
+
+// SOLID service abstractions
+abstract class AuthenticationService {
+	Future<UserModel?> signInWithEmail(String email, String password);
+	Future<void> signOut();
+}
+
+abstract class DatabaseService {
+	Future<void> createDocument(String collection, String id, Map<String, dynamic> data);
+	Future<Map<String, dynamic>?> getDocument(String collection, String id);
+}
+
+abstract class LocationService {
+	Future<Position> getCurrentLocation();
+	Stream<Position> getLocationStream();
+}
+
+// Implementations (minimal)
+class AuthService implements AuthenticationService {
+	final fb_auth.FirebaseAuth _auth;
+	final DatabaseService _databaseService;
+	AuthService(this._auth, this._databaseService);
+	@override
+	Future<UserModel?> signInWithEmail(String email, String password) async {
+		await _auth.signInWithEmailAndPassword(email: email, password: password);
+		final uid = _auth.currentUser!.uid;
+		final data = await _databaseService.getDocument('users', uid) ?? {};
+		return UserModel(
+			id: uid,
+			firstName: data['firstName'] ?? '',
+			lastName: data['lastName'] ?? '',
+			email: data['email'] ?? email,
+			selectedAvatar: data['selectedAvatar'] ?? 'assets/avatars/users/avatar_user_1.svg',
+			preferences: data['preferences'] ?? {},
+			location: data['location'],
+			createdAt: DateTime.now(),
+		);
+	}
+	@override
+	Future<void> signOut() => _auth.signOut();
+}
+
+class FirestoreDatabaseService implements DatabaseService {
+	final FirebaseFirestore _firestore;
+	FirestoreDatabaseService(this._firestore);
+	@override
+	Future<void> createDocument(String collection, String id, Map<String, dynamic> data) async {
+		await _firestore.collection(collection).doc(id).set(data, SetOptions(merge: true));
+	}
+	@override
+	Future<Map<String, dynamic>?> getDocument(String collection, String id) async {
+		final doc = await _firestore.collection(collection).doc(id).get();
+		return doc.data();
+	}
+}
+
+class OpenStreetMapLocationService implements LocationService {
+	@override
+	Future<Position> getCurrentLocation() async {
+		return Geolocator.getCurrentPosition();
+	}
+	@override
+	Stream<Position> getLocationStream() {
+		return Geolocator.getPositionStream();
+	}
+}
+
+// Notifications
+abstract class NotificationSender {
+	Future<void> sendNotification(String userId, String message);
+}
+
+class FCMNotificationService implements NotificationSender {
+	final FirebaseMessaging _messaging;
+	FCMNotificationService(this._messaging);
+	@override
+	Future<void> sendNotification(String userId, String message) async {
+		// Stub: would resolve FCM token by userId from Firestore and send via callable backend
+	}
+	Future<void> subscribeToTopic(String topic) async {
+		await _messaging.subscribeToTopic(topic);
+	}
+}
+
+// Storage service
+class FirebaseStorageService {
+	final fb_storage.FirebaseStorage _storage;
+	FirebaseStorageService(this._storage);
+	Future<String> uploadImage(File imageFile, String path) async {
+		final ref = _storage.ref(path);
+		await ref.putFile(imageFile);
+		return ref.getDownloadURL();
+	}
+	Future<String> uploadVideo(File videoFile, String path) async {
+		final ref = _storage.ref(path);
+		await ref.putFile(videoFile);
+		return ref.getDownloadURL();
+	}
+}
+
+// Chat service and model
+class ChatMessage {
+	final String id;
+	final String senderId;
+	final String text;
+	final DateTime sentAt;
+	ChatMessage({required this.id, required this.senderId, required this.text, required this.sentAt});
+	Map<String, dynamic> toMap() => {'id': id, 'senderId': senderId, 'text': text, 'sentAt': sentAt.millisecondsSinceEpoch};
+	static ChatMessage fromMap(Map<String, dynamic> m) => ChatMessage(
+		id: m['id'],
+		senderId: m['senderId'],
+		text: m['text'],
+		sentAt: DateTime.fromMillisecondsSinceEpoch(m['sentAt'] ?? 0),
+	);
+}
+
+class ChatService {
+	final DatabaseService _databaseService;
+	final NotificationSender _notificationSender;
+	ChatService(this._databaseService, this._notificationSender);
+	Future<void> sendMessage(String chatId, ChatMessage message) async {
+		await _databaseService.createDocument('chats/$chatId/messages', message.id, message.toMap());
+		await _notificationSender.sendNotification(chatId, message.text);
+	}
+	Stream<List<ChatMessage>> getChatMessages(String chatId) {
+		final firestore = FirebaseFirestore.instance;
+		return firestore.collection('chats/$chatId/messages').orderBy('sentAt').snapshots().map((snap) => snap.docs.map((d) => ChatMessage.fromMap(d.data())).toList());
+	}
+}
+
+// Avatar service
+class AvatarService {
+	static const List<String> userAvatars = [
+		'assets/avatars/users/avatar_user_1.svg',
+		'assets/avatars/users/avatar_user_2.svg',
+		'assets/avatars/users/avatar_user_3.svg',
+		'assets/avatars/users/avatar_user_4.svg',
+		'assets/avatars/users/avatar_user_5.svg',
+		'assets/avatars/users/avatar_user_6.svg',
+		'assets/avatars/users/avatar_user_7.svg',
+		'assets/avatars/users/avatar_user_8.svg',
+		'assets/avatars/users/avatar_user_9.svg',
+		'assets/avatars/users/avatar_user_10.svg',
+	];
+	String getRandomUserAvatar() {
+		userAvatars.shuffle();
+		return userAvatars.first;
+	}
+	List<String> getAllUserAvatars() => userAvatars;
+}
+
+// OpenStreetMap helpers
+class OpenStreetMapService {
+	static const String tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+	static const LatLng algerCenter = LatLng(36.737232, 3.086472);
 }
