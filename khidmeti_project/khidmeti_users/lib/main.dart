@@ -10,7 +10,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart' as fb_storage;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:http/http.dart' as http;
 import 'dart:io';
+import 'dart:convert';
 
 // Palette Paytone One
 const Color kPrimaryYellow = Color(0xFFFCDC73);
@@ -650,9 +652,56 @@ class _BubbleButtonState extends State<BubbleButton> with SingleTickerProviderSt
 	void dispose() { _controller.dispose(); super.dispose(); }
 }
 
-class MapScreen extends StatelessWidget {
+class MapScreen extends StatefulWidget {
 	const MapScreen({super.key});
+	@override
+	State<MapScreen> createState() => _MapScreenState();
+}
+
+class _MapScreenState extends State<MapScreen> {
 	static const LatLng algerCenter = LatLng(36.737232, 3.086472);
+	LatLng? _userLocation;
+	List<LatLng> _routePoints = [];
+	bool _isLoadingRoute = false;
+	final EnhancedLocationService _locationService = EnhancedLocationService();
+	
+	@override
+	void initState() {
+		super.initState();
+		_getCurrentLocation();
+	}
+	
+	Future<void> _getCurrentLocation() async {
+		try {
+			final position = await _locationService.getCurrentLocation();
+			setState(() {
+				_userLocation = LatLng(position.latitude, position.longitude);
+			});
+		} catch (e) {
+			print('Location error: $e');
+		}
+	}
+	
+	Future<void> _calculateRouteToWorker() async {
+		if (_userLocation == null) return;
+		
+		setState(() => _isLoadingRoute = true);
+		
+		// Simulate worker location (in real app, get from Firestore)
+		final workerLocation = LatLng(36.737232, 3.086472);
+		
+		try {
+			final route = await OpenStreetMapService.calculateRoute(_userLocation!, workerLocation);
+			setState(() {
+				_routePoints = route;
+				_isLoadingRoute = false;
+			});
+		} catch (e) {
+			setState(() => _isLoadingRoute = false);
+			print('Route calculation error: $e');
+		}
+	}
+	
 	@override
 	Widget build(BuildContext context) {
 		return Scaffold(
@@ -664,22 +713,136 @@ class MapScreen extends StatelessWidget {
 						Padding(
 							padding: const EdgeInsets.only(top: 88),
 							child: FlutterMap(
-								options: const MapOptions(initialCenter: algerCenter, initialZoom: 13),
-								children: const [
-									TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'khidmeti.users'),
+								options: MapOptions(
+									initialCenter: _userLocation ?? algerCenter,
+									initialZoom: 15,
+									onMapReady: () => _getCurrentLocation(),
+								),
+								children: [
+									const TileLayer(
+										urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+										userAgentPackageName: 'khidmeti.users',
+									),
+									// User location marker
+									if (_userLocation != null)
+										MarkerLayer(
+											markers: [
+												Marker(
+													point: _userLocation!,
+													width: 40,
+													height: 40,
+													child: Container(
+														decoration: BoxDecoration(
+															color: kPrimaryTeal,
+															shape: BoxShape.circle,
+															border: Border.all(color: Colors.white, width: 2),
+														),
+														child: const Icon(Icons.my_location, color: Colors.white, size: 20),
+													),
+												),
+											],
+										),
+									// Route polyline
+									if (_routePoints.isNotEmpty)
+										PolylineLayer(
+											polylines: [
+												Polyline(
+													points: _routePoints,
+													strokeWidth: 4,
+													color: kPrimaryDark,
+												),
+											],
+										),
 								],
 							),
 						),
+						// Floating action buttons
+						Positioned(
+							top: 100,
+							right: 16,
+							child: Column(
+								children: [
+									FloatingActionButton.small(
+										onPressed: _getCurrentLocation,
+										backgroundColor: kPrimaryTeal,
+										child: const Icon(Icons.my_location, color: Colors.white),
+									),
+									const SizedBox(height: 8),
+									FloatingActionButton.small(
+										onPressed: _calculateRouteToWorker,
+										backgroundColor: kPrimaryDark,
+										child: _isLoadingRoute
+											? const SizedBox(
+												width: 16,
+												height: 16,
+												child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+											)
+											: const Icon(Icons.route, color: Colors.white),
+									),
+								],
+							),
+						),
+						// Bottom CTA
 						Positioned(
 							left: 16,
 							right: 16,
 							bottom: 24,
-							child: BubbleButton(text: 'Demander un service', onPressed: () {}),
+							child: BubbleButton(
+								text: 'Demander un service',
+								onPressed: () {
+									// Show service request modal
+									_showServiceRequestModal(context);
+								},
+							),
 						),
 					],
 				),
 			),
 		);
+	}
+	
+	void _showServiceRequestModal(BuildContext context) {
+		showModalBottomSheet(
+			context: context,
+			backgroundColor: Colors.transparent,
+			builder: (context) => Container(
+				padding: const EdgeInsets.all(24),
+				decoration: const BoxDecoration(
+					color: kSurfaceColor,
+					borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+				),
+				child: Column(
+					mainAxisSize: MainAxisSize.min,
+					children: [
+						Text('Demander un service', style: kHeadingStyle),
+						const SizedBox(height: 16),
+						BubbleButton(
+							text: 'Plomberie',
+							onPressed: () => Navigator.pop(context),
+							primaryColor: kPrimaryTeal,
+						),
+						const SizedBox(height: 12),
+						BubbleButton(
+							text: 'Électricité',
+							onPressed: () => Navigator.pop(context),
+							primaryColor: kPrimaryTeal,
+						),
+						const SizedBox(height: 12),
+						BubbleButton(
+							text: 'Ménage',
+							onPressed: () => Navigator.pop(context),
+							primaryColor: kPrimaryTeal,
+						),
+					],
+				),
+			),
+		);
+	}
+	
+	@override
+	void dispose() {
+		_locationService.dispose();
+		super.dispose();
 	}
 }
 
@@ -829,42 +992,225 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
 	final AvatarService _avatarService = AvatarService();
 	late String _avatar = AvatarService.userAvatars.first;
+	final FirebaseStorageService _storageService = FirebaseStorageService(fb_storage.FirebaseStorage.instance);
+	File? _selectedImage;
+	
 	@override
 	Widget build(BuildContext context) {
 		return Scaffold(
 			backgroundColor: kBackgroundColor,
 			body: SafeArea(
-				child: Column(
-					children: [
-						const ModernHeader(title: 'Profil'),
-						const SizedBox(height: 24),
-						CircleAvatar(
-							radius: 56,
-							backgroundColor: kPrimaryYellow.withOpacity(0.3),
-							child: Padding(
-								padding: const EdgeInsets.all(6),
-								child: Image.asset('assets/images/placeholder.png', errorBuilder: (_, __, ___) => const Icon(Icons.person, size: 56, color: kPrimaryDark)),
+				child: SingleChildScrollView(
+					padding: const EdgeInsets.all(16),
+					child: Column(
+						children: [
+							const ModernHeader(title: 'Profil'),
+							const SizedBox(height: 24),
+							// Avatar section
+							GestureDetector(
+								onTap: _showAvatarPicker,
+								child: Stack(
+									children: [
+										CircleAvatar(
+											radius: 56,
+											backgroundColor: kPrimaryYellow.withOpacity(0.3),
+											backgroundImage: _selectedImage != null ? FileImage(_selectedImage!) : null,
+											child: _selectedImage == null
+												? Padding(
+													padding: const EdgeInsets.all(6),
+													child: SvgPicture.asset(
+														_avatar,
+														width: 100,
+														height: 100,
+													),
+												)
+												: null,
+										),
+										Positioned(
+											bottom: 0,
+											right: 0,
+											child: Container(
+												padding: const EdgeInsets.all(8),
+												decoration: BoxDecoration(
+													color: kPrimaryTeal,
+													shape: BoxShape.circle,
+													border: Border.all(color: Colors.white, width: 2),
+												),
+												child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
+											),
+										),
+									],
+								),
 							),
-						),
+							const SizedBox(height: 16),
+							Text('Utilisateur Khidmeti', style: kHeadingStyle),
+							const SizedBox(height: 4),
+							const Text('email@example.com', style: kBodyStyle),
+							const SizedBox(height: 32),
+							// Action buttons
+							BubbleButton(
+								text: 'Changer d\'avatar',
+								onPressed: _showAvatarPicker,
+								primaryColor: kPrimaryTeal,
+							),
+							const SizedBox(height: 16),
+							BubbleButton(
+								text: 'Prendre une photo',
+								onPressed: _takePhoto,
+								primaryColor: kPrimaryDark,
+							),
+							const SizedBox(height: 16),
+							BubbleButton(
+								text: 'Choisir une image',
+								onPressed: _pickImage,
+								primaryColor: kPrimaryYellow,
+								textColor: kPrimaryDark,
+							),
+							const SizedBox(height: 32),
+							// Settings section
+							Container(
+								padding: const EdgeInsets.all(16),
+								decoration: BoxDecoration(
+									color: kSurfaceColor,
+									borderRadius: BorderRadius.circular(16),
+									boxShadow: [
+										BoxShadow(
+											color: kPrimaryDark.withOpacity(0.06),
+											offset: const Offset(0, 8),
+											blurRadius: 24,
+										),
+									],
+								),
+								child: Column(
+									children: [
+										_ProfileMenuItem(
+											icon: Icons.notifications,
+											title: 'Notifications',
+											subtitle: 'Gérer les notifications',
+											onTap: () {},
+										),
+										const Divider(),
+										_ProfileMenuItem(
+											icon: Icons.location_on,
+											title: 'Localisation',
+											subtitle: 'Paramètres de localisation',
+											onTap: () {},
+										),
+										const Divider(),
+										_ProfileMenuItem(
+											icon: Icons.security,
+											title: 'Sécurité',
+											subtitle: 'Mot de passe et sécurité',
+											onTap: () {},
+										),
+									],
+								),
+							),
+							const SizedBox(height: 24),
+							BubbleButton(
+								text: 'Se déconnecter',
+								onPressed: () => fb_auth.FirebaseAuth.instance.signOut(),
+								primaryColor: kPrimaryRed,
+							),
+						],
+					),
+				),
+			),
+		);
+	}
+	
+	void _showAvatarPicker() {
+		showModalBottomSheet(
+			context: context,
+			backgroundColor: Colors.transparent,
+			builder: (context) => Container(
+				padding: const EdgeInsets.all(24),
+				decoration: const BoxDecoration(
+					color: kSurfaceColor,
+					borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+				),
+				child: Column(
+					mainAxisSize: MainAxisSize.min,
+					children: [
+						Text('Choisir un avatar', style: kHeadingStyle),
 						const SizedBox(height: 16),
-						Text('Utilisateur Khidmeti', style: kHeadingStyle),
-						const SizedBox(height: 4),
-						const Text('email@example.com', style: kBodyStyle),
-						const SizedBox(height: 24),
-						BubbleButton(text: 'Changer d\'avatar', onPressed: () {
-							setState(() => _avatar = _avatarService.getRandomUserAvatar());
-						}),
-						const SizedBox(height: 24),
-						Text('Avatar sélectionné: $_avatar', style: kBodyStyle),
-						const SizedBox(height: 24),
-						BubbleButton(
-							text: 'Se déconnecter',
-							onPressed: () => fb_auth.FirebaseAuth.instance.signOut(),
-							primaryColor: kPrimaryRed,
+						SizedBox(
+							height: 200,
+							child: GridView.builder(
+								gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+									crossAxisCount: 4,
+									crossAxisSpacing: 12,
+									mainAxisSpacing: 12,
+								),
+								itemCount: AvatarService.userAvatars.length,
+								itemBuilder: (context, index) {
+									final avatar = AvatarService.userAvatars[index];
+									return GestureDetector(
+										onTap: () {
+											setState(() => _avatar = avatar);
+											Navigator.pop(context);
+										},
+										child: Container(
+											decoration: BoxDecoration(
+												border: Border.all(
+													color: _avatar == avatar ? kPrimaryTeal : Colors.transparent,
+													width: 2,
+												),
+												borderRadius: BorderRadius.circular(12),
+											),
+											child: ClipRRect(
+												borderRadius: BorderRadius.circular(10),
+												child: SvgPicture.asset(avatar),
+											),
+										),
+									);
+								},
+							),
 						),
 					],
 				),
 			),
+		);
+	}
+	
+	Future<void> _takePhoto() async {
+		// Implementation would use image_picker
+		// For now, just show a placeholder
+		ScaffoldMessenger.of(context).showSnackBar(
+			const SnackBar(content: Text('Fonctionnalité photo à implémenter')),
+		);
+	}
+	
+	Future<void> _pickImage() async {
+		// Implementation would use image_picker
+		// For now, just show a placeholder
+		ScaffoldMessenger.of(context).showSnackBar(
+			const SnackBar(content: Text('Fonctionnalité galerie à implémenter')),
+		);
+	}
+}
+
+class _ProfileMenuItem extends StatelessWidget {
+	final IconData icon;
+	final String title;
+	final String subtitle;
+	final VoidCallback onTap;
+	
+	const _ProfileMenuItem({
+		required this.icon,
+		required this.title,
+		required this.subtitle,
+		required this.onTap,
+	});
+	
+	@override
+	Widget build(BuildContext context) {
+		return ListTile(
+			leading: Icon(icon, color: kPrimaryDark),
+			title: Text(title, style: kSubheadingStyle),
+			subtitle: Text(subtitle, style: kBodyStyle),
+			trailing: const Icon(Icons.arrow_forward_ios, color: kSubtitleColor, size: 16),
+			onTap: onTap,
 		);
 	}
 }
@@ -1080,4 +1426,140 @@ class AvatarService {
 class OpenStreetMapService {
 	static const String tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 	static const LatLng algerCenter = LatLng(36.737232, 3.086472);
+	
+	// OpenRouteService integration
+	static const String openRouteApiKey = 'your-openroute-api-key';
+	static const String openRouteBaseUrl = 'https://api.openrouteservice.org/v2/directions';
+	
+	static Future<List<LatLng>> calculateRoute(LatLng start, LatLng end) async {
+		try {
+			final response = await http.get(
+				Uri.parse('$openRouteBaseUrl/driving-car?api_key=$openRouteApiKey&start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}'),
+				headers: {'Authorization': openRouteApiKey},
+			);
+			
+			if (response.statusCode == 200) {
+				final data = json.decode(response.body);
+				final coordinates = data['features'][0]['geometry']['coordinates'] as List;
+				return coordinates.map((coord) => LatLng(coord[1] as double, coord[0] as double)).toList();
+			}
+		} catch (e) {
+			print('Route calculation error: $e');
+		}
+		return [start, end]; // Fallback to direct line
+	}
+	
+	static Future<double> calculateDistance(LatLng start, LatLng end) async {
+		try {
+			final response = await http.get(
+				Uri.parse('$openRouteBaseUrl/driving-car?api_key=$openRouteApiKey&start=${start.longitude},${start.latitude}&end=${end.longitude},${end.latitude}'),
+				headers: {'Authorization': openRouteApiKey},
+			);
+			
+			if (response.statusCode == 200) {
+				final data = json.decode(response.body);
+				return data['features'][0]['properties']['summary']['distance'] / 1000; // Convert to km
+			}
+		} catch (e) {
+			print('Distance calculation error: $e');
+		}
+		return Geolocator.distanceBetween(start.latitude, start.longitude, end.latitude, end.longitude) / 1000;
+	}
+}
+
+// Enhanced location service with real-time tracking
+class EnhancedLocationService extends OpenStreetMapLocationService {
+	Position? _lastPosition;
+	StreamSubscription<Position>? _locationSubscription;
+	
+	@override
+	Future<Position> getCurrentLocation() async {
+		final position = await super.getCurrentLocation();
+		_lastPosition = position;
+		return position;
+	}
+	
+	@override
+	Stream<Position> getLocationStream() {
+		_locationSubscription?.cancel();
+		_locationSubscription = Geolocator.getPositionStream(
+			locationSettings: const LocationSettings(
+				accuracy: LocationAccuracy.high,
+				distanceFilter: 10, // Update every 10 meters
+			),
+		).listen((position) {
+			_lastPosition = position;
+		});
+		return _locationSubscription!.asBroadcastStream();
+	}
+	
+	Position? get lastPosition => _lastPosition;
+	
+	Future<String> getAddressFromCoordinates(double lat, double lng) async {
+		try {
+			final placemarks = await placemarkFromCoordinates(lat, lng);
+			if (placemarks.isNotEmpty) {
+				final place = placemarks.first;
+				return '${place.street}, ${place.locality}';
+			}
+		} catch (e) {
+			print('Geocoding error: $e');
+		}
+		return 'Adresse non trouvée';
+	}
+	
+	void dispose() {
+		_locationSubscription?.cancel();
+	}
+}
+
+// Push notification service
+class PushNotificationService {
+	final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+	
+	Future<void> initialize() async {
+		// Request permission
+		final settings = await _messaging.requestPermission(
+			alert: true,
+			badge: true,
+			sound: true,
+		);
+		
+		if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+			// Get FCM token
+			final token = await _messaging.getToken();
+			if (token != null) {
+				await _saveTokenToFirestore(token);
+			}
+			
+			// Listen for token refresh
+			_messaging.onTokenRefresh.listen(_saveTokenToFirestore);
+			
+			// Handle foreground messages
+			FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+			
+			// Handle background messages
+			FirebaseMessaging.onBackgroundMessage(_handleBackgroundMessage);
+		}
+	}
+	
+	Future<void> _saveTokenToFirestore(String token) async {
+		final user = fb_auth.FirebaseAuth.instance.currentUser;
+		if (user != null) {
+			await FirebaseFirestore.instance
+				.collection('users')
+				.doc(user.uid)
+				.update({'fcmToken': token});
+		}
+	}
+	
+	void _handleForegroundMessage(RemoteMessage message) {
+		print('Foreground message: ${message.notification?.title}');
+		// Show local notification
+	}
+}
+
+// Background message handler
+Future<void> _handleBackgroundMessage(RemoteMessage message) async {
+	print('Background message: ${message.notification?.title}');
 }
