@@ -8,6 +8,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:firebase_storage/firebase_storage.dart' as fb_storage;
+import 'dart:io';
 
 // Palette Paytone One (accent pro)
 const Color kPrimaryYellow = Color(0xFFFCDC73);
@@ -528,6 +530,322 @@ class WorkerServices {
 	}
 }
 
+// Worker verification and professional features
+class WorkerVerificationService {
+	final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+	
+	Future<void> submitVerification({
+		required String workerId,
+		required String idCardUrl,
+		required String professionalCertUrl,
+		required String addressProofUrl,
+	}) async {
+		await _firestore.collection('worker_verifications').doc(workerId).set({
+			'workerId': workerId,
+			'idCardUrl': idCardUrl,
+			'professionalCertUrl': professionalCertUrl,
+			'addressProofUrl': addressProofUrl,
+			'status': 'pending',
+			'submittedAt': FieldValue.serverTimestamp(),
+			'reviewedAt': null,
+			'reviewerNotes': null,
+		});
+		
+		// Update worker status
+		await _firestore.collection('workers').doc(workerId).update({
+			'verificationStatus': 'pending',
+		});
+	}
+	
+	Stream<Map<String, dynamic>?> getVerificationStatus(String workerId) {
+		return _firestore
+			.collection('worker_verifications')
+			.doc(workerId)
+			.snapshots()
+			.map((doc) => doc.data());
+	}
+}
+
+// Earnings and financial tracking
+class EarningsService {
+	final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+	
+	Stream<Map<String, dynamic>> getEarningsSummary(String workerId) {
+		return _firestore
+			.collection('earnings')
+			.where('workerId', isEqualTo: workerId)
+			.snapshots()
+			.map((snapshot) {
+				double totalEarnings = 0;
+				double thisMonthEarnings = 0;
+				double thisWeekEarnings = 0;
+				int totalJobs = 0;
+				
+				final now = DateTime.now();
+				final thisMonth = DateTime(now.year, now.month);
+				final thisWeek = now.subtract(Duration(days: now.weekday - 1));
+				
+				for (final doc in snapshot.docs) {
+					final data = doc.data();
+					final amount = (data['amount'] ?? 0).toDouble();
+					final date = (data['date'] as Timestamp).toDate();
+					
+					totalEarnings += amount;
+					totalJobs++;
+					
+					if (date.isAfter(thisMonth)) {
+						thisMonthEarnings += amount;
+					}
+					
+					if (date.isAfter(thisWeek)) {
+						thisWeekEarnings += amount;
+					}
+				}
+				
+				return {
+					'totalEarnings': totalEarnings,
+					'thisMonthEarnings': thisMonthEarnings,
+					'thisWeekEarnings': thisWeekEarnings,
+					'totalJobs': totalJobs,
+				};
+			});
+	}
+	
+	Future<void> recordEarning({
+		required String workerId,
+		required String requestId,
+		required double amount,
+		required String paymentMethod,
+	}) async {
+		await _firestore.collection('earnings').add({
+			'workerId': workerId,
+			'requestId': requestId,
+			'amount': amount,
+			'paymentMethod': paymentMethod,
+			'date': FieldValue.serverTimestamp(),
+			'status': 'completed',
+		});
+	}
+}
+
+// Professional portfolio management
+class PortfolioService {
+	final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+	final FirebaseStorageService _storageService = FirebaseStorageService(fb_storage.FirebaseStorage.instance);
+	
+	Future<void> addPortfolioItem({
+		required String workerId,
+		required String title,
+		required String description,
+		required List<File> images,
+		required String category,
+	}) async {
+		final imageUrls = <String>[];
+		
+		for (final image in images) {
+			final url = await _storageService.uploadImage(
+				image,
+				'portfolios/$workerId/${DateTime.now().millisecondsSinceEpoch}.jpg',
+			);
+			imageUrls.add(url);
+		}
+		
+		await _firestore.collection('portfolios').add({
+			'workerId': workerId,
+			'title': title,
+			'description': description,
+			'imageUrls': imageUrls,
+			'category': category,
+			'createdAt': FieldValue.serverTimestamp(),
+			'likes': 0,
+			'views': 0,
+		});
+	}
+	
+	Stream<List<Map<String, dynamic>>> getWorkerPortfolio(String workerId) {
+		return _firestore
+			.collection('portfolios')
+			.where('workerId', isEqualTo: workerId)
+			.orderBy('createdAt', descending: true)
+			.snapshots()
+			.map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
+	}
+}
+
+// Enhanced dashboard with real-time data
+class EnhancedDashboardScreen extends StatelessWidget {
+	const EnhancedDashboardScreen({super.key});
+	@override
+	Widget build(BuildContext context) {
+		final user = fb_auth.FirebaseAuth.instance.currentUser;
+		if (user == null) return const SizedBox.shrink();
+		
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: SafeArea(
+				child: Column(
+					crossAxisAlignment: CrossAxisAlignment.start,
+					children: [
+						const ModernHeader(title: 'Tableau de bord'),
+						Expanded(
+							child: SingleChildScrollView(
+								padding: const EdgeInsets.all(16),
+								child: Column(
+									children: [
+										// Earnings summary
+										StreamBuilder<Map<String, dynamic>>(
+											stream: EarningsService().getEarningsSummary(user.uid),
+											builder: (context, snapshot) {
+												if (!snapshot.hasData) {
+													return const Center(child: CircularProgressIndicator());
+												}
+												
+												final earnings = snapshot.data!;
+												return Column(
+													children: [
+														ProfessionalDashboardCard(
+															title: 'Revenus totaux',
+															value: '${earnings['totalEarnings'].toStringAsFixed(0)} DZD',
+															icon: Icons.payments,
+															trend: '${earnings['totalJobs']} interventions',
+														),
+														ProfessionalDashboardCard(
+															title: 'Ce mois',
+															value: '${earnings['thisMonthEarnings'].toStringAsFixed(0)} DZD',
+															icon: Icons.calendar_month,
+															trend: '+12% vs mois dernier',
+														),
+														ProfessionalDashboardCard(
+															title: 'Cette semaine',
+															value: '${earnings['thisWeekEarnings'].toStringAsFixed(0)} DZD',
+															icon: Icons.trending_up,
+															trend: '${earnings['totalJobs']} interventions',
+														),
+													],
+												);
+											},
+										),
+										const SizedBox(height: 24),
+										// Quick actions
+										Container(
+											padding: const EdgeInsets.all(16),
+											decoration: BoxDecoration(
+												color: kSurfaceColor,
+												borderRadius: BorderRadius.circular(16),
+												boxShadow: [
+													BoxShadow(
+														color: kPrimaryDark.withOpacity(0.06),
+														offset: const Offset(0, 8),
+														blurRadius: 24,
+													),
+												],
+											),
+											child: Column(
+												crossAxisAlignment: CrossAxisAlignment.start,
+												children: [
+													Text('Actions rapides', style: kHeadingStyle.copyWith(fontSize: 18)),
+													const SizedBox(height: 16),
+													Row(
+														children: [
+															Expanded(
+																child: _QuickActionButton(
+																	icon: Icons.work,
+																	label: 'Nouvelles demandes',
+																	onTap: () {},
+																	color: kPrimaryTeal,
+																),
+															),
+															const SizedBox(width: 12),
+															Expanded(
+																child: _QuickActionButton(
+																	icon: Icons.portfolio,
+																	label: 'Portfolio',
+																	onTap: () {},
+																	color: kPrimaryDark,
+																),
+															),
+														],
+													),
+													const SizedBox(height: 12),
+													Row(
+														children: [
+															Expanded(
+																child: _QuickActionButton(
+																	icon: Icons.verified,
+																	label: 'Vérification',
+																	onTap: () {},
+																	color: kPrimaryYellow,
+																),
+															),
+															const SizedBox(width: 12),
+															Expanded(
+																child: _QuickActionButton(
+																	icon: Icons.settings,
+																	label: 'Paramètres',
+																	onTap: () {},
+																	color: kPrimaryRed,
+																),
+															),
+														],
+													),
+												],
+											),
+										),
+									],
+								),
+							),
+						),
+					],
+				),
+			),
+		);
+	}
+}
+
+class _QuickActionButton extends StatelessWidget {
+	final IconData icon;
+	final String label;
+	final VoidCallback onTap;
+	final Color color;
+	
+	const _QuickActionButton({
+		required this.icon,
+		required this.label,
+		required this.onTap,
+		required this.color,
+	});
+	
+	@override
+	Widget build(BuildContext context) {
+		return GestureDetector(
+			onTap: onTap,
+			child: Container(
+				padding: const EdgeInsets.all(16),
+				decoration: BoxDecoration(
+					color: color.withOpacity(0.1),
+					borderRadius: BorderRadius.circular(12),
+					border: Border.all(color: color.withOpacity(0.3)),
+				),
+				child: Column(
+					children: [
+						Icon(icon, color: color, size: 24),
+						const SizedBox(height: 8),
+						Text(
+							label,
+							style: TextStyle(
+								color: color,
+								fontSize: 12,
+								fontWeight: FontWeight.w600,
+							),
+							textAlign: TextAlign.center,
+						),
+					],
+				),
+			),
+		);
+	}
+}
+
 class WorkersHomeShell extends StatefulWidget {
 	const WorkersHomeShell({super.key});
 	@override
@@ -536,7 +854,7 @@ class WorkersHomeShell extends StatefulWidget {
 
 class _WorkersHomeShellState extends State<WorkersHomeShell> {
 	int _index = 0;
-	final List<Widget> _screens = const [DashboardScreen(), WorkerMapScreen(), WorkersRequestsScreen(), WorkersProfileScreen()];
+	final List<Widget> _screens = const [EnhancedDashboardScreen(), WorkerMapScreen(), WorkersRequestsScreen(), WorkersProfileScreen()];
 	@override
 	Widget build(BuildContext context) {
 		return Scaffold(

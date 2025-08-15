@@ -1563,3 +1563,618 @@ class PushNotificationService {
 Future<void> _handleBackgroundMessage(RemoteMessage message) async {
 	print('Background message: ${message.notification?.title}');
 }
+
+// Payment services
+abstract class PaymentProcessor {
+	Future<PaymentResult> processPayment(double amount, PaymentMethod method);
+}
+
+class PaymentResult {
+	final bool success;
+	final String transactionId;
+	final String? errorMessage;
+	PaymentResult({required this.success, required this.transactionId, this.errorMessage});
+}
+
+enum PaymentMethod { baridiMob, bankCard, cash }
+
+class BaridiMobPaymentProcessor implements PaymentProcessor {
+	@override
+	Future<PaymentResult> processPayment(double amount, PaymentMethod method) async {
+		// Simulate BaridiMob payment processing
+		await Future.delayed(const Duration(seconds: 2));
+		return PaymentResult(
+			success: true,
+			transactionId: 'BM_${DateTime.now().millisecondsSinceEpoch}',
+		);
+	}
+}
+
+class BankCardPaymentProcessor implements PaymentProcessor {
+	@override
+	Future<PaymentResult> processPayment(double amount, PaymentMethod method) async {
+		// Simulate bank card payment processing
+		await Future.delayed(const Duration(seconds: 3));
+		return PaymentResult(
+			success: true,
+			transactionId: 'BC_${DateTime.now().millisecondsSinceEpoch}',
+		);
+	}
+}
+
+// Real-time request matching service
+class RequestMatchingService {
+	final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+	
+	Stream<List<WorkerModel>> getAvailableWorkersNearby(GeoPoint userLocation, double radiusKm) {
+		return _firestore
+			.collection('workers')
+			.where('isAvailable', isEqualTo: true)
+			.where('isVisible', isEqualTo: true)
+			.snapshots()
+			.map((snapshot) {
+				return snapshot.docs.map((doc) {
+					final data = doc.data();
+					final workerLocation = data['location'] as GeoPoint;
+					final distance = Geolocator.distanceBetween(
+						userLocation.latitude,
+						userLocation.longitude,
+						workerLocation.latitude,
+						workerLocation.longitude,
+					) / 1000;
+					
+					if (distance <= radiusKm) {
+						return WorkerModel(
+							id: doc.id,
+							firstName: data['firstName'] ?? '',
+							lastName: data['lastName'] ?? '',
+							selectedAvatar: data['selectedAvatar'] ?? '',
+							services: List<String>.from(data['services'] ?? []),
+							rating: (data['rating'] ?? 0.0).toDouble(),
+							totalReviews: data['totalReviews'] ?? 0,
+							location: workerLocation,
+							isAvailable: data['isAvailable'] ?? false,
+							isVisible: data['isVisible'] ?? false,
+							portfolio: data['portfolio'] ?? {},
+						);
+					}
+					return null;
+				}).where((worker) => worker != null).cast<WorkerModel>().toList();
+			});
+	}
+	
+	Future<void> createServiceRequest({
+		required String userId,
+		required String serviceType,
+		required String description,
+		required GeoPoint location,
+		required DateTime scheduledDate,
+		List<String> mediaUrls = const [],
+	}) async {
+		final requestId = _firestore.collection('requests').doc().id;
+		await _firestore.collection('requests').doc(requestId).set({
+			'id': requestId,
+			'userId': userId,
+			'serviceType': serviceType,
+			'description': description,
+			'location': location,
+			'scheduledDate': scheduledDate,
+			'mediaUrls': mediaUrls,
+			'status': 'pending',
+			'createdAt': FieldValue.serverTimestamp(),
+			'workerId': null,
+			'finalPrice': null,
+		});
+	}
+}
+
+// Enhanced chat service with real-time messaging
+class EnhancedChatService extends ChatService {
+	EnhancedChatService(super.databaseService, super.notificationSender);
+	
+	Stream<List<ChatMessage>> getChatMessages(String chatId) {
+		return FirebaseFirestore.instance
+			.collection('chats/$chatId/messages')
+			.orderBy('sentAt', descending: true)
+			.limit(50)
+			.snapshots()
+			.map((snapshot) => snapshot.docs
+				.map((doc) => ChatMessage.fromMap(doc.data()))
+				.toList()
+				.reversed.toList());
+	}
+	
+	Future<void> sendMessage(String chatId, String text) async {
+		final message = ChatMessage(
+			id: DateTime.now().millisecondsSinceEpoch.toString(),
+			senderId: fb_auth.FirebaseAuth.instance.currentUser?.uid ?? '',
+			text: text,
+			sentAt: DateTime.now(),
+		);
+		
+		await sendMessage(chatId, message);
+	}
+	
+	Future<String> createChat(String userId, String workerId) async {
+		final chatId = '${userId}_${workerId}';
+		await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
+			'participants': [userId, workerId],
+			'createdAt': FieldValue.serverTimestamp(),
+			'lastMessage': null,
+			'lastMessageAt': null,
+		});
+		return chatId;
+	}
+}
+
+// Chat screen implementation
+class ChatScreen extends StatefulWidget {
+	final String chatId;
+	final String workerName;
+	const ChatScreen({super.key, required this.chatId, required this.workerName});
+	@override
+	State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+	final TextEditingController _messageController = TextEditingController();
+	final EnhancedChatService _chatService = EnhancedChatService(
+		FirestoreDatabaseService(FirebaseFirestore.instance),
+		FCMNotificationService(FirebaseMessaging.instance),
+	);
+	
+	@override
+	Widget build(BuildContext context) {
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: SafeArea(
+				child: Column(
+					children: [
+						ModernHeader(
+							title: widget.workerName,
+							showBackButton: true,
+							actions: [
+								IconButton(
+									onPressed: () {},
+									icon: const Icon(Icons.call, color: kPrimaryTeal),
+								),
+							],
+						),
+						Expanded(
+							child: StreamBuilder<List<ChatMessage>>(
+								stream: _chatService.getChatMessages(widget.chatId),
+								builder: (context, snapshot) {
+									if (snapshot.hasError) {
+										return const Center(child: Text('Erreur de chargement'));
+									}
+									
+									if (!snapshot.hasData) {
+										return const Center(child: CircularProgressIndicator());
+									}
+									
+									final messages = snapshot.data!;
+									
+									return ListView.builder(
+										reverse: true,
+										padding: const EdgeInsets.all(16),
+										itemCount: messages.length,
+										itemBuilder: (context, index) {
+											final message = messages[index];
+											final isMe = message.senderId == fb_auth.FirebaseAuth.instance.currentUser?.uid;
+											
+											return Container(
+												margin: const EdgeInsets.only(bottom: 8),
+												child: Row(
+													mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+													children: [
+														Container(
+															padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+															decoration: BoxDecoration(
+																color: isMe ? kPrimaryTeal : kSurfaceColor,
+																borderRadius: BorderRadius.circular(20),
+																boxShadow: [
+																	BoxShadow(
+																		color: kPrimaryDark.withOpacity(0.1),
+																		offset: const Offset(0, 2),
+																		blurRadius: 8,
+																	),
+																],
+															),
+															child: Text(
+																message.text,
+																style: TextStyle(
+																	color: isMe ? Colors.white : kTextColor,
+																	fontSize: 14,
+																),
+															),
+														),
+													],
+												),
+											);
+										},
+									);
+								},
+							),
+						),
+						Container(
+							padding: const EdgeInsets.all(16),
+							decoration: BoxDecoration(
+								color: kSurfaceColor,
+								boxShadow: [
+									BoxShadow(
+										color: kPrimaryDark.withOpacity(0.1),
+										offset: const Offset(0, -2),
+										blurRadius: 8,
+									),
+								],
+							),
+							child: Row(
+								children: [
+									Expanded(
+										child: Container(
+											decoration: BoxDecoration(
+												color: kBackgroundColor,
+												borderRadius: BorderRadius.circular(25),
+											),
+											child: TextField(
+												controller: _messageController,
+												decoration: const InputDecoration(
+													hintText: 'Tapez votre message...',
+													border: InputBorder.none,
+													contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+												),
+											),
+										),
+									),
+									const SizedBox(width: 12),
+									GestureDetector(
+										onTap: _sendMessage,
+										child: Container(
+											padding: const EdgeInsets.all(12),
+											decoration: BoxDecoration(
+												color: kPrimaryTeal,
+												shape: BoxShape.circle,
+											),
+											child: const Icon(Icons.send, color: Colors.white, size: 20),
+										),
+									),
+								],
+							),
+						),
+					],
+				),
+			),
+		);
+	}
+	
+	void _sendMessage() {
+		if (_messageController.text.trim().isEmpty) return;
+		
+		_chatService.sendMessage(widget.chatId, _messageController.text.trim());
+		_messageController.clear();
+	}
+}
+
+// Service request creation screen
+class ServiceRequestScreen extends StatefulWidget {
+	const ServiceRequestScreen({super.key});
+	@override
+	State<ServiceRequestScreen> createState() => _ServiceRequestScreenState();
+}
+
+class _ServiceRequestScreenState extends State<ServiceRequestScreen> {
+	final _formKey = GlobalKey<FormState>();
+	final _descriptionController = TextEditingController();
+	String _selectedService = 'Plomberie';
+	DateTime _scheduledDate = DateTime.now().add(const Duration(hours: 1));
+	final RequestMatchingService _matchingService = RequestMatchingService();
+	
+	final List<String> _services = [
+		'Plomberie',
+		'Électricité',
+		'Peinture',
+		'Ménage',
+		'Jardinage',
+		'Déménagement',
+	];
+	
+	@override
+	Widget build(BuildContext context) {
+		return Scaffold(
+			backgroundColor: kBackgroundColor,
+			body: SafeArea(
+				child: Column(
+					children: [
+						const ModernHeader(title: 'Nouvelle demande', showBackButton: true),
+						Expanded(
+							child: SingleChildScrollView(
+								padding: const EdgeInsets.all(16),
+								child: Form(
+									key: _formKey,
+									child: Column(
+										crossAxisAlignment: CrossAxisAlignment.start,
+										children: [
+											// Service selection
+											Text('Type de service', style: kSubheadingStyle),
+											const SizedBox(height: 12),
+											Container(
+												padding: const EdgeInsets.all(16),
+												decoration: BoxDecoration(
+													color: kSurfaceColor,
+													borderRadius: BorderRadius.circular(16),
+													boxShadow: [
+														BoxShadow(
+															color: kPrimaryDark.withOpacity(0.06),
+															offset: const Offset(0, 8),
+															blurRadius: 24,
+														),
+													],
+												),
+												child: DropdownButtonFormField<String>(
+													value: _selectedService,
+													decoration: const InputDecoration(
+														border: InputBorder.none,
+														prefixIcon: Icon(Icons.category, color: kPrimaryDark),
+													),
+													items: _services.map((service) {
+														return DropdownMenuItem(
+															value: service,
+															child: Text(service),
+														);
+													}).toList(),
+													onChanged: (value) {
+														setState(() => _selectedService = value!);
+													},
+												),
+											),
+											const SizedBox(height: 24),
+											// Description
+											Text('Description', style: kSubheadingStyle),
+											const SizedBox(height: 12),
+											Container(
+												decoration: BoxDecoration(
+													color: kSurfaceColor,
+													borderRadius: BorderRadius.circular(16),
+													boxShadow: [
+														BoxShadow(
+															color: kPrimaryDark.withOpacity(0.06),
+															offset: const Offset(0, 8),
+															blurRadius: 24,
+														),
+													],
+												),
+												child: TextFormField(
+													controller: _descriptionController,
+													maxLines: 4,
+													validator: (value) {
+														if (value == null || value.isEmpty) {
+															return 'Veuillez décrire votre demande';
+														}
+														return null;
+													},
+													decoration: const InputDecoration(
+														hintText: 'Décrivez votre problème ou besoin...',
+														border: InputBorder.none,
+														contentPadding: EdgeInsets.all(16),
+													),
+												),
+											),
+											const SizedBox(height: 24),
+											// Scheduled date
+											Text('Date et heure', style: kSubheadingStyle),
+											const SizedBox(height: 12),
+											Container(
+												padding: const EdgeInsets.all(16),
+												decoration: BoxDecoration(
+													color: kSurfaceColor,
+													borderRadius: BorderRadius.circular(16),
+													boxShadow: [
+														BoxShadow(
+															color: kPrimaryDark.withOpacity(0.06),
+															offset: const Offset(0, 8),
+															blurRadius: 24,
+														),
+													],
+												),
+												child: ListTile(
+													leading: const Icon(Icons.schedule, color: kPrimaryDark),
+													title: Text(
+														'${_scheduledDate.day}/${_scheduledDate.month}/${_scheduledDate.year} à ${_scheduledDate.hour}:${_scheduledDate.minute.toString().padLeft(2, '0')}',
+													),
+													trailing: const Icon(Icons.edit, color: kPrimaryTeal),
+													onTap: () async {
+														final date = await showDatePicker(
+															context: context,
+															initialDate: _scheduledDate,
+															firstDate: DateTime.now(),
+															lastDate: DateTime.now().add(const Duration(days: 30)),
+														);
+														if (date != null) {
+															final time = await showTimePicker(
+																context: context,
+																initialTime: TimeOfDay.fromDateTime(_scheduledDate),
+															);
+															if (time != null) {
+																setState(() {
+																	_scheduledDate = DateTime(
+																		date.year,
+																		date.month,
+																		date.day,
+																		time.hour,
+																		time.minute,
+																	);
+																});
+															}
+														}
+													},
+												),
+											),
+											const SizedBox(height: 32),
+											// Submit button
+											BubbleButton(
+												text: 'Créer la demande',
+												onPressed: _createRequest,
+												primaryColor: kPrimaryDark,
+												width: double.infinity,
+												height: 56,
+											),
+										],
+									),
+								),
+							),
+						),
+					],
+				),
+			),
+		);
+	}
+	
+	Future<void> _createRequest() async {
+		if (!_formKey.currentState!.validate()) return;
+		
+		final user = fb_auth.FirebaseAuth.instance.currentUser;
+		if (user == null) return;
+		
+		try {
+			// Get current location (simplified)
+			final position = await Geolocator.getCurrentPosition();
+			final location = GeoPoint(position.latitude, position.longitude);
+			
+			await _matchingService.createServiceRequest(
+				userId: user.uid,
+				serviceType: _selectedService,
+				description: _descriptionController.text.trim(),
+				location: location,
+				scheduledDate: _scheduledDate,
+			);
+			
+			if (!mounted) return;
+			
+			ScaffoldMessenger.of(context).showSnackBar(
+				const SnackBar(content: Text('Demande créée avec succès !')),
+			);
+			
+			Navigator.pop(context);
+		} catch (e) {
+			ScaffoldMessenger.of(context).showSnackBar(
+				SnackBar(content: Text('Erreur: ${e.toString()}')),
+			);
+		}
+	}
+}
+
+// Payment modal
+class PaymentModal extends StatefulWidget {
+	final double amount;
+	final String requestId;
+	const PaymentModal({super.key, required this.amount, required this.requestId});
+	@override
+	State<PaymentModal> createState() => _PaymentModalState();
+}
+
+class _PaymentModalState extends State<PaymentModal> {
+	PaymentMethod _selectedMethod = PaymentMethod.baridiMob;
+	bool _isProcessing = false;
+	
+	@override
+	Widget build(BuildContext context) {
+		return Container(
+			padding: const EdgeInsets.all(24),
+			decoration: const BoxDecoration(
+				color: kSurfaceColor,
+				borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+			),
+			child: Column(
+				mainAxisSize: MainAxisSize.min,
+				children: [
+					Text('Paiement', style: kHeadingStyle),
+					const SizedBox(height: 16),
+					Text(
+						'${widget.amount.toStringAsFixed(0)} DZD',
+						style: kHeadingStyle.copyWith(fontSize: 32, color: kPrimaryDark),
+					),
+					const SizedBox(height: 24),
+					// Payment methods
+					RadioListTile<PaymentMethod>(
+						title: const Text('BaridiMob'),
+						subtitle: const Text('Paiement mobile'),
+						value: PaymentMethod.baridiMob,
+						groupValue: _selectedMethod,
+						onChanged: (value) => setState(() => _selectedMethod = value!),
+						activeColor: kPrimaryTeal,
+					),
+					RadioListTile<PaymentMethod>(
+						title: const Text('Carte bancaire'),
+						subtitle: const Text('Visa, Mastercard'),
+						value: PaymentMethod.bankCard,
+						groupValue: _selectedMethod,
+						onChanged: (value) => setState(() => _selectedMethod = value!),
+						activeColor: kPrimaryTeal,
+					),
+					RadioListTile<PaymentMethod>(
+						title: const Text('Espèces'),
+						subtitle: const Text('Paiement à la livraison'),
+						value: PaymentMethod.cash,
+						groupValue: _selectedMethod,
+						onChanged: (value) => setState(() => _selectedMethod = value!),
+						activeColor: kPrimaryTeal,
+					),
+					const SizedBox(height: 24),
+					BubbleButton(
+						text: _isProcessing ? 'Traitement...' : 'Payer maintenant',
+						onPressed: _isProcessing ? null : _processPayment,
+						primaryColor: kPrimaryDark,
+						width: double.infinity,
+						height: 56,
+					),
+				],
+			),
+		);
+	}
+	
+	Future<void> _processPayment() async {
+		setState(() => _isProcessing = true);
+		
+		try {
+			PaymentProcessor processor;
+			switch (_selectedMethod) {
+				case PaymentMethod.baridiMob:
+					processor = BaridiMobPaymentProcessor();
+					break;
+				case PaymentMethod.bankCard:
+					processor = BankCardPaymentProcessor();
+					break;
+				case PaymentMethod.cash:
+					// Cash payment - no processing needed
+					setState(() => _isProcessing = false);
+					Navigator.pop(context, true);
+					return;
+			}
+			
+			final result = await processor.processPayment(widget.amount, _selectedMethod);
+			
+			if (result.success) {
+				// Update request status
+				await FirebaseFirestore.instance
+					.collection('requests')
+					.doc(widget.requestId)
+					.update({
+						'paymentStatus': 'paid',
+						'paymentMethod': _selectedMethod.name,
+						'transactionId': result.transactionId,
+						'paidAt': FieldValue.serverTimestamp(),
+					});
+				
+				if (!mounted) return;
+				Navigator.pop(context, true);
+			} else {
+				throw Exception(result.errorMessage ?? 'Erreur de paiement');
+			}
+		} catch (e) {
+			setState(() => _isProcessing = false);
+			ScaffoldMessenger.of(context).showSnackBar(
+				SnackBar(content: Text('Erreur: ${e.toString()}')),
+			);
+		}
+	}
+}
